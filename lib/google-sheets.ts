@@ -93,3 +93,48 @@ export async function listarHojas(spreadsheetId: string): Promise<string[]> {
   const res = await sheets.spreadsheets.get({ spreadsheetId });
   return res.data.sheets?.map((s) => s.properties?.title || "") || [];
 }
+
+/**
+ * Crea una pestaña nueva en el libro. Si ya existe, no hace nada y retorna
+ * false (para que el caller sepa que no tuvo que crearla).
+ */
+export async function crearHoja(
+  spreadsheetId: string,
+  titulo: string
+): Promise<boolean> {
+  const sheets = getSheetsClient();
+  const existentes = await listarHojas(spreadsheetId);
+  if (existentes.includes(titulo)) return false;
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          addSheet: {
+            properties: { title: titulo },
+          },
+        },
+      ],
+    },
+  });
+  return true;
+}
+
+/**
+ * Escribe valores empezando en una celda (sobrescribiendo). Útil para
+ * escribir el row de headers después de crear una hoja nueva.
+ */
+export async function escribirRango(
+  spreadsheetId: string,
+  rangoA1: string,
+  filas: any[][]
+): Promise<void> {
+  const sheets = getSheetsClient();
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: rangoA1,
+    valueInputOption: "USER_ENTERED",
+    requestBody: { values: filas },
+  });
+}

@@ -14,7 +14,37 @@
  *   - Un producto está DISPONIBLE si la columna FECHA VENTA está vacía
  *     (independiente de lo que diga ESTADO).
  */
-import { leerRango, listarHojas, agregarFila } from "@/lib/google-sheets";
+import {
+  leerRango,
+  listarHojas,
+  agregarFila,
+  crearHoja,
+  escribirRango,
+} from "@/lib/google-sheets";
+
+/**
+ * Nombre de la hoja dedicada al inventario 2026+.
+ * Regla de Leonardo: trabajamos en una hoja nueva para no confundirnos con
+ * los datos históricos desordenados. La app la crea automáticamente la
+ * primera vez que se agrega un producto.
+ */
+export const HOJA_INVENTARIO = "Inventario android 2026";
+
+/**
+ * Headers fijos — orden definido para que la hoja sea legible para todos.
+ */
+const HEADERS_INVENTARIO = [
+  "FECHA INGRESO",
+  "MARCA",
+  "EQUIPO",
+  "IMEI 1",
+  "IMEI 2",
+  "COLOR",
+  "PRECIO COSTO",
+  "FECHA VENTA",
+  "ESTADO",
+  "PROVEEDOR",
+];
 
 export type Producto = {
   marca: string;
@@ -91,23 +121,32 @@ export function mapearColumnasInventario(headers: string[]): ColMapInventario {
 }
 
 /**
- * Localiza la hoja de inventario android. Nombre exacto puede variar entre sedes.
+ * Localiza la hoja de inventario 2026. Solo mira el nombre EXACTO de la hoja
+ * nueva que creamos para este sistema. Ignora cualquier hoja vieja con
+ * "inventario" en el nombre para no mezclarnos con datos sucios.
+ *
+ * Retorna null si la hoja no existe todavía (caller decide si crearla).
  */
-export async function hojaInventario(libroId: string): Promise<string> {
+export async function hojaInventario(libroId: string): Promise<string | null> {
   const hojas = await listarHojas(libroId);
-  // Preferencia: hoja que contenga ANDROID
-  let match = hojas.find(
-    (h) => h.toUpperCase().includes("INVENTARIO") && h.toUpperCase().includes("ANDROID")
-  );
-  if (!match) {
-    match = hojas.find((h) => h.toUpperCase().includes("INVENTARIO"));
-  }
-  if (!match) {
-    throw new Error(
-      `No encontré hoja de inventario. Hojas disponibles: ${hojas.join(", ")}`
-    );
-  }
-  return match;
+  return hojas.includes(HOJA_INVENTARIO) ? HOJA_INVENTARIO : null;
+}
+
+/**
+ * Se asegura de que la hoja "Inventario android 2026" exista. Si no, la
+ * crea con los headers fijos. Retorna el nombre de la hoja.
+ *
+ * Se usa antes de escribir (crearProducto) — para las lecturas no forzamos
+ * la creación, simplemente retornamos vacío si no existe.
+ */
+export async function asegurarHojaInventario(libroId: string): Promise<string> {
+  const existente = await hojaInventario(libroId);
+  if (existente) return existente;
+
+  // No existía — crearla
+  await crearHoja(libroId, HOJA_INVENTARIO);
+  await escribirRango(libroId, `'${HOJA_INVENTARIO}'!A1`, [HEADERS_INVENTARIO]);
+  return HOJA_INVENTARIO;
 }
 
 /**
@@ -250,6 +289,10 @@ export async function listarDisponibles(
   filtro?: { marca?: string; equipo?: string; color?: string }
 ): Promise<Producto[]> {
   const hoja = await hojaInventario(libroId);
+  if (!hoja) {
+    // Hoja aún no existe — todavía no se ha agregado ningún producto.
+    return [];
+  }
   const filasTotales = await leerRango(libroId, `'${hoja}'!A1:Z`);
   if (filasTotales.length < 2) return [];
 
@@ -298,6 +341,7 @@ export async function buscarPorImei(
   imei: string
 ): Promise<(Producto & { disponible: boolean; fechaVenta?: string }) | null> {
   const hoja = await hojaInventario(libroId);
+  if (!hoja) return null;
   const filasTotales = await leerRango(libroId, `'${hoja}'!A1:Z`);
   if (filasTotales.length < 2) return null;
 
@@ -354,7 +398,8 @@ export async function crearProducto(
     fechaIngreso?: string; // si no viene, usa hoy
   }
 ): Promise<{ filaEscrita: number }> {
-  const hoja = await hojaInventario(libroId);
+  // Crea la hoja automáticamente si es la primera vez
+  const hoja = await asegurarHojaInventario(libroId);
   const filasTotales = await leerRango(libroId, `'${hoja}'!A1:Z`);
   const { headers, dataRows } = detectarHeaderRow(filasTotales);
   const cols = mapearColumnasInventario(headers);
