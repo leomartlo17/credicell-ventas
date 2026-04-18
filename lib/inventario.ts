@@ -121,15 +121,50 @@ export function mapearColumnasInventario(headers: string[]): ColMapInventario {
 }
 
 /**
- * Localiza la hoja de inventario 2026. Solo mira el nombre EXACTO de la hoja
- * nueva que creamos para este sistema. Ignora cualquier hoja vieja con
- * "inventario" en el nombre para no mezclarnos con datos sucios.
+ * Localiza la hoja de inventario a usar, con este orden de preferencia:
+ *   1. "Inventario android 2026" — la hoja nueva limpia que creamos (si existe).
+ *   2. Alguna hoja que contenga "INVENTARIO" + "ANDROID" en el nombre.
+ *   3. Cualquier hoja que contenga "INVENTARIO".
+ * Para 2 y 3, validamos que tenga al menos columnas reconocibles
+ * (MARCA, EQUIPO, IMEI) antes de elegirla — para evitar picar hojas
+ * tipo "INVENTARIO INICIAL DE ACCESORIOS" que son de otra cosa.
  *
- * Retorna null si la hoja no existe todavía (caller decide si crearla).
+ * Retorna null si no encontramos ninguna hoja usable.
  */
 export async function hojaInventario(libroId: string): Promise<string | null> {
   const hojas = await listarHojas(libroId);
-  return hojas.includes(HOJA_INVENTARIO) ? HOJA_INVENTARIO : null;
+
+  // Preferencia 1: nombre exacto de nuestra hoja limpia
+  if (hojas.includes(HOJA_INVENTARIO)) return HOJA_INVENTARIO;
+
+  // Candidatas en orden: android primero, luego cualquier inventario
+  const conAndroid = hojas.filter((h) => {
+    const n = h.toUpperCase();
+    return n.includes("INVENTARIO") && n.includes("ANDROID");
+  });
+  const otras = hojas.filter((h) => {
+    const n = h.toUpperCase();
+    return n.includes("INVENTARIO") && !conAndroid.includes(h);
+  });
+  const candidatas = [...conAndroid, ...otras];
+
+  for (const candidata of candidatas) {
+    try {
+      const muestra = await leerRango(libroId, `'${candidata}'!A1:Z15`);
+      if (muestra.length < 2) continue;
+      const { headers } = detectarHeaderRow(muestra);
+      const cols = mapearColumnasInventario(headers);
+      // Necesitamos al menos marca + equipo + imei1 para considerar usable
+      if (cols.marca >= 0 && cols.equipo >= 0 && cols.imei1 >= 0) {
+        return candidata;
+      }
+    } catch {
+      // Hoja no tiene estructura reconocible — sigue con la siguiente
+      continue;
+    }
+  }
+
+  return null;
 }
 
 /**
