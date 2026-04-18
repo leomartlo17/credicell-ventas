@@ -481,6 +481,44 @@ export async function crearProducto(
 }
 
 /**
+ * Lee TODAS las filas del inventario 2026+ (vendidas y disponibles) y
+ * devuelve el catálogo único de marcas/equipos/colores ya usados. Sirve
+ * para poblar dropdowns en el formulario de subir producto, evitando
+ * que cada asesor invente escrituras nuevas.
+ *
+ * Retorna listas vacías si la hoja no existe.
+ */
+export async function leerCatalogo(libroId: string): Promise<{
+  marcas: string[];
+  equiposPorMarca: Record<string, string[]>;
+  colores: string[];
+}> {
+  const hoja = await hojaInventario(libroId);
+  if (!hoja) return { marcas: [], equiposPorMarca: {}, colores: [] };
+
+  const filasTotales = await leerRango(libroId, `'${hoja}'!A1:Z`);
+  if (filasTotales.length < 2) return { marcas: [], equiposPorMarca: {}, colores: [] };
+
+  const { headers, dataRows } = detectarHeaderRow(filasTotales);
+  const cols = mapearColumnasInventario(headers);
+  if (cols.marca < 0 || cols.equipo < 0) {
+    return { marcas: [], equiposPorMarca: {}, colores: [] };
+  }
+
+  // Construir lista de productos (sin filtro de disponibilidad — queremos
+  // el catálogo completo 2026+ para los dropdowns)
+  const productos: Producto[] = [];
+  for (let i = 0; i < dataRows.length; i++) {
+    const fila = dataRows[i] || [];
+    if (!esDe2026OPosterior(fila, cols)) continue;
+    const p = filaAProducto(fila, cols, i + 2);
+    if (!p.marca || !p.equipo) continue;
+    productos.push(p);
+  }
+  return extraerOpciones(productos);
+}
+
+/**
  * Devuelve listas únicas de marcas, equipos y colores a partir de los
  * productos disponibles. Deduplicación robusta por clave normalizada
  * (trim + uppercase + sin acentos) para evitar mostrar "Samsung" y

@@ -4,18 +4,38 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+type Catalogo = {
+  marcas: string[];
+  equiposPorMarca: Record<string, string[]>;
+  colores: string[];
+};
+
+const NUEVO = "__NUEVO__"; // valor especial para "crear nueva entrada"
+
 export default function NuevoProducto() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  const [catalogo, setCatalogo] = useState<Catalogo>({
+    marcas: [],
+    equiposPorMarca: {},
+    colores: [],
+  });
+  const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
+
   const [form, setForm] = useState({
     marca: "",
+    marcaNueva: "",
     equipo: "",
+    equipoNuevo: "",
     color: "",
+    colorNuevo: "",
     imei1: "",
     imei2: "",
     precioCosto: "",
     proveedor: "",
   });
+
   const [estado, setEstado] = useState<
     | { tipo: "inicial" }
     | { tipo: "guardando" }
@@ -27,6 +47,16 @@ export default function NuevoProducto() {
     if (status === "unauthenticated") router.replace("/");
   }, [status, router]);
 
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    fetch("/api/catalogo")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d.error) setCatalogo(d);
+      })
+      .finally(() => setCargandoCatalogo(false));
+  }, [status]);
+
   if (status === "loading" || !session) {
     return (
       <main className="min-h-screen flex items-center justify-center">
@@ -36,23 +66,45 @@ export default function NuevoProducto() {
   }
 
   function actualizar(campo: string, valor: string) {
-    setForm({ ...form, [campo]: valor });
+    setForm((f) => ({ ...f, [campo]: valor }));
   }
 
+  // Marca final: si eligió "nueva", usa marcaNueva; si eligió de la lista, usa ese
+  const marcaFinal =
+    form.marca === NUEVO ? form.marcaNueva.trim() : form.marca;
+  const equipoFinal =
+    form.equipo === NUEVO ? form.equipoNuevo.trim() : form.equipo;
+  const colorFinal =
+    form.color === NUEVO ? form.colorNuevo.trim() : form.color;
+
+  // Equipos que aparecen en el dropdown según la marca elegida
+  const equiposDisponibles = marcaFinal
+    ? catalogo.equiposPorMarca[marcaFinal] || []
+    : [];
+
   async function guardar() {
-    // Validar mínimos aquí mismo para dar feedback rápido
-    if (!form.marca.trim() || !form.equipo.trim()) {
-      setEstado({ tipo: "error", mensaje: "Marca y Equipo son obligatorios" });
+    if (!marcaFinal) {
+      setEstado({ tipo: "error", mensaje: "Selecciona o crea una marca" });
+      return;
+    }
+    if (!equipoFinal) {
+      setEstado({ tipo: "error", mensaje: "Selecciona o crea un equipo" });
       return;
     }
     const imei1 = form.imei1.replace(/\D/g, "");
     if (imei1.length !== 15) {
-      setEstado({ tipo: "error", mensaje: `IMEI 1 debe ser 15 dígitos (tienes ${imei1.length})` });
+      setEstado({
+        tipo: "error",
+        mensaje: `IMEI 1 debe ser 15 dígitos (tienes ${imei1.length})`,
+      });
       return;
     }
     const imei2 = form.imei2.replace(/\D/g, "");
     if (form.imei2 && imei2.length !== 15) {
-      setEstado({ tipo: "error", mensaje: `IMEI 2 debe ser 15 dígitos (tienes ${imei2.length})` });
+      setEstado({
+        tipo: "error",
+        mensaje: `IMEI 2 debe ser 15 dígitos (tienes ${imei2.length})`,
+      });
       return;
     }
 
@@ -62,9 +114,9 @@ export default function NuevoProducto() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          marca: form.marca.trim(),
-          equipo: form.equipo.trim(),
-          color: form.color.trim() || undefined,
+          marca: marcaFinal,
+          equipo: equipoFinal,
+          color: colorFinal || undefined,
           imei1,
           imei2: imei2 || undefined,
           precioCosto: form.precioCosto ? Number(form.precioCosto) : undefined,
@@ -78,10 +130,31 @@ export default function NuevoProducto() {
       }
       setEstado({
         tipo: "ok",
-        mensaje: `Guardado: ${form.marca} ${form.equipo} · IMEI ${imei1}`,
+        mensaje: `Guardado: ${marcaFinal} ${equipoFinal} · IMEI ${imei1}`,
       });
-      // Limpiar solo los IMEIs para seguir agregando el mismo modelo
-      setForm({ ...form, imei1: "", imei2: "" });
+      // Limpiar solo IMEIs. Marca/equipo/color se mantienen en el form para
+      // que el asesor pueda seguir cargando unidades del mismo modelo.
+      setForm((f) => ({ ...f, imei1: "", imei2: "" }));
+
+      // Refrescar el catálogo: si acaba de crear marca/equipo/color nuevo,
+      // aparecerá en los dropdowns al volver a abrir.
+      fetch("/api/catalogo")
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d.error) {
+            setCatalogo(d);
+            // Migrar el form de "nuevo" a "seleccionado" ahora que existe
+            setForm((f) => ({
+              ...f,
+              marca: marcaFinal,
+              marcaNueva: "",
+              equipo: equipoFinal,
+              equipoNuevo: "",
+              color: colorFinal || f.color,
+              colorNuevo: "",
+            }));
+          }
+        });
     } catch (e: any) {
       setEstado({ tipo: "error", mensaje: e?.message || "Error de red" });
     }
@@ -101,51 +174,168 @@ export default function NuevoProducto() {
 
       <h1 className="text-2xl font-bold mb-1">Agregar producto al inventario</h1>
       <p className="text-muted text-sm mb-6">
-        Si ya existe el IMEI, el sistema lo rechaza. Marca y Equipo se guardan
-        tal cual los escribas — <strong>"Samsung A17" y "Samsung A17 5G" son
-        diferentes</strong>, no los mezcles.
+        Selecciona marca y equipo de la lista para que no haya duplicados por
+        errores de escritura. Si es un modelo nuevo, usa "+ Crear nueva...".
       </p>
 
       <div className="space-y-3">
-        <Campo label="Marca *" value={form.marca} onChange={(v) => actualizar("marca", v)} placeholder="Samsung" />
-        <Campo
-          label="Equipo (modelo exacto) *"
-          value={form.equipo}
-          onChange={(v) => actualizar("equipo", v)}
-          placeholder="A17 5G"
-        />
-        <Campo
-          label="Color"
-          value={form.color}
-          onChange={(v) => actualizar("color", v)}
-          placeholder="Negro"
-        />
-        <Campo
-          label="IMEI 1 * (15 dígitos)"
-          value={form.imei1}
-          onChange={(v) => actualizar("imei1", v.replace(/\D/g, "").slice(0, 15))}
-          type="tel"
-          mono
-        />
-        <Campo
-          label="IMEI 2 (opcional, dual SIM)"
-          value={form.imei2}
-          onChange={(v) => actualizar("imei2", v.replace(/\D/g, "").slice(0, 15))}
-          type="tel"
-          mono
-        />
-        <Campo
-          label="Precio costo"
-          value={form.precioCosto}
-          onChange={(v) => actualizar("precioCosto", v.replace(/[^\d]/g, ""))}
-          type="tel"
-          placeholder="850000"
-        />
-        <Campo
-          label="Proveedor"
-          value={form.proveedor}
-          onChange={(v) => actualizar("proveedor", v)}
-        />
+        {/* MARCA */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Marca *</label>
+          <select
+            value={form.marca}
+            onChange={(e) => {
+              const v = e.target.value;
+              actualizar("marca", v);
+              // al cambiar marca, reset equipo y color
+              setForm((f) => ({
+                ...f,
+                marca: v,
+                equipo: "",
+                equipoNuevo: "",
+              }));
+            }}
+            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          >
+            <option value="">
+              {cargandoCatalogo ? "Cargando..." : "-- Seleccionar --"}
+            </option>
+            {catalogo.marcas.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value={NUEVO}>+ Crear nueva marca...</option>
+          </select>
+          {form.marca === NUEVO && (
+            <input
+              type="text"
+              placeholder="Nombre de la nueva marca (ej: Xiaomi)"
+              value={form.marcaNueva}
+              onChange={(e) => actualizar("marcaNueva", e.target.value)}
+              className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-yellow-500 text-sm"
+            />
+          )}
+        </div>
+
+        {/* EQUIPO */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Equipo / Modelo *</label>
+          <select
+            value={form.equipo}
+            onChange={(e) => actualizar("equipo", e.target.value)}
+            disabled={!marcaFinal}
+            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm disabled:opacity-40"
+          >
+            <option value="">
+              {!marcaFinal
+                ? "Selecciona marca primero"
+                : "-- Seleccionar --"}
+            </option>
+            {equiposDisponibles.map((e) => (
+              <option key={e} value={e}>
+                {e}
+              </option>
+            ))}
+            {marcaFinal && <option value={NUEVO}>+ Crear nuevo equipo...</option>}
+          </select>
+          {form.equipo === NUEVO && (
+            <>
+              <input
+                type="text"
+                placeholder="Modelo exacto (ej: A17 5G)"
+                value={form.equipoNuevo}
+                onChange={(e) => actualizar("equipoNuevo", e.target.value)}
+                className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-yellow-500 text-sm"
+              />
+              <p className="text-xs text-yellow-400 mt-1">
+                ⚠ "Samsung A17" y "Samsung A17 5G" son diferentes. Escríbelo
+                como venga en la caja.
+              </p>
+            </>
+          )}
+        </div>
+
+        {/* COLOR */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Color</label>
+          <select
+            value={form.color}
+            onChange={(e) => actualizar("color", e.target.value)}
+            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          >
+            <option value="">-- Sin especificar --</option>
+            {catalogo.colores.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+            <option value={NUEVO}>+ Nuevo color...</option>
+          </select>
+          {form.color === NUEVO && (
+            <input
+              type="text"
+              placeholder="Color nuevo"
+              value={form.colorNuevo}
+              onChange={(e) => actualizar("colorNuevo", e.target.value)}
+              className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white focus:outline-none focus:border-yellow-500 text-sm"
+            />
+          )}
+        </div>
+
+        {/* IMEI 1 */}
+        <div>
+          <label className="block text-xs text-muted mb-1">IMEI 1 * (15 dígitos, único)</label>
+          <input
+            type="tel"
+            inputMode="numeric"
+            value={form.imei1}
+            onChange={(e) =>
+              actualizar("imei1", e.target.value.replace(/\D/g, "").slice(0, 15))
+            }
+            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm font-mono"
+          />
+        </div>
+
+        {/* IMEI 2 */}
+        <div>
+          <label className="block text-xs text-muted mb-1">IMEI 2 (opcional, dual SIM)</label>
+          <input
+            type="tel"
+            inputMode="numeric"
+            value={form.imei2}
+            onChange={(e) =>
+              actualizar("imei2", e.target.value.replace(/\D/g, "").slice(0, 15))
+            }
+            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm font-mono"
+          />
+        </div>
+
+        {/* PRECIO COSTO */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Precio costo</label>
+          <input
+            type="tel"
+            inputMode="numeric"
+            placeholder="850000"
+            value={form.precioCosto}
+            onChange={(e) =>
+              actualizar("precioCosto", e.target.value.replace(/[^\d]/g, ""))
+            }
+            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
+          />
+        </div>
+
+        {/* PROVEEDOR */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Proveedor</label>
+          <input
+            type="text"
+            value={form.proveedor}
+            onChange={(e) => actualizar("proveedor", e.target.value)}
+            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          />
+        </div>
       </div>
 
       <button
@@ -160,7 +350,8 @@ export default function NuevoProducto() {
         <div className="mt-4 bg-[#141821] border border-green-800 rounded-xl p-3 text-green-300 text-sm">
           ✓ {estado.mensaje}
           <div className="text-xs text-muted mt-1">
-            Los campos de IMEI se limpiaron para que sigas agregando el mismo modelo.
+            Los IMEIs se limpiaron. La marca, equipo y color se quedan para
+            seguir agregando rápido.
           </div>
         </div>
       )}
@@ -170,37 +361,5 @@ export default function NuevoProducto() {
         </div>
       )}
     </main>
-  );
-}
-
-function Campo({
-  label,
-  value,
-  onChange,
-  type = "text",
-  placeholder,
-  mono = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  placeholder?: string;
-  mono?: boolean;
-}) {
-  return (
-    <div>
-      <label className="block text-xs text-muted mb-1">{label}</label>
-      <input
-        type={type}
-        inputMode={type === "tel" ? "numeric" : undefined}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm ${
-          mono ? "font-mono" : ""
-        }`}
-      />
-    </div>
   );
 }
