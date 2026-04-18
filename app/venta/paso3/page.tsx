@@ -43,10 +43,21 @@ function Paso3Pago() {
       return;
     }
     fetch(`/api/producto/buscar-imei?imei=${imei}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.encontrado) setProducto(data.producto);
-        else setError("Producto no encontrado");
+      .then(async (r) => {
+        const data = await r.json();
+        if (!r.ok) {
+          setError(data.error || "Error al cargar producto");
+          return;
+        }
+        if (!data.encontrado) {
+          setError("Producto no encontrado en el inventario");
+          return;
+        }
+        if (data.disponible === false) {
+          setError(data.error || "Este equipo ya fue vendido");
+          return;
+        }
+        setProducto(data.producto);
       })
       .catch((e) => setError(e?.message || "Error"))
       .finally(() => setCargando(false));

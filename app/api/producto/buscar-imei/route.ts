@@ -35,10 +35,23 @@ export async function GET(req: Request) {
     if (!producto) {
       return NextResponse.json({ encontrado: false });
     }
-    // Verificar si ya fue vendido consultando disponibles
-    // (buscarPorImei no filtra por estado a propósito, para que podamos avisar)
+    if (!producto.disponible) {
+      // Existe pero ya fue vendido — NO dejamos avanzar.
+      return NextResponse.json(
+        {
+          encontrado: true,
+          disponible: false,
+          producto,
+          error: `Este equipo ya fue vendido${
+            producto.fechaVenta ? ` (${producto.fechaVenta})` : ""
+          }. No se puede volver a vender.`,
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({
       encontrado: true,
+      disponible: true,
       producto,
     });
   } catch (error: any) {

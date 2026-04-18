@@ -187,12 +187,28 @@ function filaAProducto(
 }
 
 function estaDisponible(fila: any[], cols: ColMapInventario): boolean {
-  // DISPONIBLE = FECHA VENTA vacía. Ignoramos la columna ESTADO porque
-  // a veces queda desactualizada; la fecha de venta es la verdad.
-  if (cols.fechaVenta < 0) return true; // sin columna, asumimos disponible
-  const fv = fila[cols.fechaVenta];
-  if (fv === "" || fv === undefined || fv === null) return true;
-  return false;
+  // DISPONIBLE = FECHA VENTA vacía Y ESTADO no sea "VENDIDO" / "DEVOLUCION" /
+  // "RESERVADO". La fecha de venta es la verdad principal; si esa existe,
+  // el equipo se fue. También chequeamos ESTADO por si FECHA VENTA quedó
+  // vacía pero marcaron VENDIDO a mano.
+  if (cols.fechaVenta >= 0) {
+    const fv = fila[cols.fechaVenta];
+    if (fv !== undefined && fv !== null && String(fv).trim() !== "") {
+      return false; // tiene fecha de venta → está vendido
+    }
+  }
+  if (cols.estado >= 0) {
+    const est = normalizar(String(fila[cols.estado] || ""));
+    if (
+      est.includes("VENDIDO") ||
+      est.includes("RESERVADO") ||
+      est.includes("DEVOLUCION") ||
+      est.includes("GARANTIA")
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -240,13 +256,14 @@ export async function listarDisponibles(
 
 /**
  * Busca un producto por IMEI (exacto, 15 dígitos). Revisa IMEI 1 e IMEI 2.
- * Retorna el producto AUNQUE ya esté vendido — es responsabilidad del caller
- * avisar al usuario si el producto no está disponible.
+ * Retorna el producto AUNQUE ya esté vendido, pero incluye la bandera
+ * `disponible: false` + la fecha de venta. Es responsabilidad del API/UI
+ * bloquear la selección si no está disponible.
  */
 export async function buscarPorImei(
   libroId: string,
   imei: string
-): Promise<Producto | null> {
+): Promise<(Producto & { disponible: boolean; fechaVenta?: string }) | null> {
   const hoja = await hojaInventario(libroId);
   const filasTotales = await leerRango(libroId, `'${hoja}'!A1:Z`);
   if (filasTotales.length < 2) return null;
@@ -268,7 +285,16 @@ export async function buscarPorImei(
       cols.imei2 >= 0 ? String(fila[cols.imei2] || "").replace(/\D/g, "") : "";
     if (imei1 === imeiLimpio || imei2 === imeiLimpio) {
       const filaNumero = headerRowIndex + i + 2;
-      return filaAProducto(fila, cols, filaNumero);
+      const disponible = estaDisponible(fila, cols);
+      const fechaVenta =
+        cols.fechaVenta >= 0
+          ? String(fila[cols.fechaVenta] || "")
+          : undefined;
+      return {
+        ...filaAProducto(fila, cols, filaNumero),
+        disponible,
+        fechaVenta: fechaVenta || undefined,
+      };
     }
   }
   return null;
