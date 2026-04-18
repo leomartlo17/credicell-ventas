@@ -35,7 +35,6 @@ export default function Paso1Cliente() {
     direccion: "",
     ciudad: "",
     email: "",
-    ocupacion: "",
   });
 
   useEffect(() => {
@@ -163,7 +162,9 @@ export default function Paso1Cliente() {
           </div>
           <button
             className="w-full mt-4 py-3 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg"
-            onClick={() => alert("Siguiente paso (Producto) — próxima fase")}
+            onClick={() =>
+              router.push(`/venta/paso2?cedula=${estado.cliente.cedula}`)
+            }
           >
             Siguiente: Producto →
           </button>
@@ -200,11 +201,6 @@ export default function Paso1Cliente() {
               value={formNuevo.ciudad}
               onChange={(v) => setFormNuevo({ ...formNuevo, ciudad: v })}
             />
-            <Campo
-              label="Ocupación"
-              value={formNuevo.ocupacion}
-              onChange={(v) => setFormNuevo({ ...formNuevo, ocupacion: v })}
-            />
           </div>
           <button
             onClick={crear}
@@ -226,7 +222,9 @@ export default function Paso1Cliente() {
           <div className="text-sm text-muted">CC: {estado.cliente.cedula}</div>
           <button
             className="w-full mt-4 py-3 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg"
-            onClick={() => alert("Siguiente paso (Producto) — próxima fase")}
+            onClick={() =>
+              router.push(`/venta/paso2?cedula=${estado.cliente.cedula}`)
+            }
           >
             Siguiente: Producto →
           </button>

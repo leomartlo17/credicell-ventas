@@ -57,16 +57,24 @@ export default function Dashboard() {
         Nueva venta
       </button>
 
-      {/* Diagnóstico rápido de la hoja CLIENTES — visible solo para admins */}
+      {/* Diagnósticos — visibles solo para admins */}
       {(session as any).esAdmin && (
-        <div className="mt-6 text-center">
+        <div className="mt-6 flex flex-col items-center gap-2">
           <a
             href="/api/diag/clientes"
             target="_blank"
             rel="noreferrer"
             className="text-xs text-muted hover:text-white underline"
           >
-            Ver diagnóstico de hoja CLIENTES
+            Diagnóstico CLIENTES
+          </a>
+          <a
+            href="/api/diag/inventario"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-muted hover:text-white underline"
+          >
+            Diagnóstico INVENTARIO
           </a>
         </div>
       )}
