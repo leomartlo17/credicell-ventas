@@ -404,30 +404,54 @@ export async function crearProducto(
 }
 
 /**
- * Devuelve listas únicas de marcas, equipos (agrupados por marca) y colores
- * a partir de los productos disponibles. Útil para poblar dropdowns.
+ * Devuelve listas únicas de marcas, equipos y colores a partir de los
+ * productos disponibles. Deduplicación robusta por clave normalizada
+ * (trim + uppercase + sin acentos) para evitar mostrar "Samsung" y
+ * "Samsung " como opciones distintas en el dropdown.
  */
 export function extraerOpciones(productos: Producto[]): {
   marcas: string[];
   equiposPorMarca: Record<string, string[]>;
   colores: string[];
 } {
-  const marcasSet = new Set<string>();
-  const equiposMap = new Map<string, Set<string>>();
-  const coloresSet = new Set<string>();
+  // Map<keyNormalizada, valorDisplay>
+  const marcasMap = new Map<string, string>();
+  // Map<marcaNormalizada, Map<equipoNorm, equipoDisplay>>
+  const equiposMap = new Map<string, Map<string, string>>();
+  const coloresMap = new Map<string, string>();
+
   for (const p of productos) {
-    if (p.marca) marcasSet.add(p.marca);
-    if (p.marca && p.equipo) {
-      if (!equiposMap.has(p.marca)) equiposMap.set(p.marca, new Set());
-      equiposMap.get(p.marca)!.add(p.equipo);
+    const marcaTrim = (p.marca || "").trim();
+    if (marcaTrim) {
+      const k = normalizar(marcaTrim);
+      if (!marcasMap.has(k)) marcasMap.set(k, marcaTrim);
     }
-    if (p.color) coloresSet.add(p.color);
+    const equipoTrim = (p.equipo || "").trim();
+    if (marcaTrim && equipoTrim) {
+      const km = normalizar(marcaTrim);
+      if (!equiposMap.has(km)) equiposMap.set(km, new Map());
+      const ke = normalizar(equipoTrim);
+      if (!equiposMap.get(km)!.has(ke)) {
+        equiposMap.get(km)!.set(ke, equipoTrim);
+      }
+    }
+    const colorTrim = (p.color || "").trim();
+    if (colorTrim) {
+      const k = normalizar(colorTrim);
+      if (!coloresMap.has(k)) coloresMap.set(k, colorTrim);
+    }
   }
+
+  // Reindexar equiposPorMarca por el display name de la marca (no por normalizado)
   const equiposPorMarca: Record<string, string[]> = {};
-  for (const [m, s] of equiposMap) equiposPorMarca[m] = [...s].sort();
+  for (const [normKey, equipos] of equiposMap) {
+    const marcaDisplay = marcasMap.get(normKey) || normKey;
+    equiposPorMarca[marcaDisplay] = [...equipos.values()].sort();
+  }
+
   return {
-    marcas: [...marcasSet].sort(),
+    marcas: [...marcasMap.values()].sort(),
     equiposPorMarca,
-    colores: [...coloresSet].sort(),
+    colores: [...coloresMap.values()].sort(),
   };
 }

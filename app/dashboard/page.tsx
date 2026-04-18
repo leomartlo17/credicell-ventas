@@ -69,21 +69,29 @@ export default function Dashboard() {
       {(session as any).esAdmin && (
         <div className="mt-6 flex flex-col items-center gap-2">
           <a
-            href="/api/diag/clientes"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-muted hover:text-white underline"
+            href="/admin/diagnostico"
+            className="text-sm text-brand hover:text-brand-light underline font-medium"
           >
-            Diagnóstico CLIENTES
+            → Diagnóstico visual del inventario ←
           </a>
-          <a
-            href="/api/diag/inventario"
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-muted hover:text-white underline"
-          >
-            Diagnóstico INVENTARIO
-          </a>
+          <div className="flex gap-4 text-xs text-muted">
+            <a
+              href="/api/diag/clientes"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white underline"
+            >
+              JSON clientes
+            </a>
+            <a
+              href="/api/diag/inventario"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-white underline"
+            >
+              JSON inventario
+            </a>
+          </div>
         </div>
       )}
     </main>
