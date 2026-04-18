@@ -115,7 +115,7 @@ export function mapearColumnasInventario(headers: string[]): ColMapInventario {
     color: find(["COLOR"]),
     precioCosto: find(["PRECIO COSTO", "COSTO"]),
     fechaVenta: find(["FECHA VENTA", "F VENTA"]),
-    estado: find(["ESTADO"]),
+    estado: find(["ESTADO", "ESTATUS", "STATUS", "VENDIDO"]),
     proveedor: find(["PROVEEDOR"]),
   };
 }
@@ -291,24 +291,21 @@ function filaAProducto(
 }
 
 function estaDisponible(fila: any[], cols: ColMapInventario): boolean {
-  // DISPONIBLE = FECHA VENTA vacía Y ESTADO no sea "VENDIDO" / "DEVOLUCION" /
-  // "RESERVADO". La fecha de venta es la verdad principal; si esa existe,
-  // el equipo se fue. También chequeamos ESTADO por si FECHA VENTA quedó
-  // vacía pero marcaron VENDIDO a mano.
+  // Regla de Leonardo: columna ESTADO (I) vacía = DISPONIBLE, con CUALQUIER
+  // cosa = VENDIDO. No evaluamos el contenido — si hay algo escrito ahí,
+  // significa que ya no se puede vender (puede ser una fecha, un nombre,
+  // "VENDIDO", "X", etc.). La ausencia de texto es la señal de disponibilidad.
+  if (cols.estado >= 0) {
+    const est = fila[cols.estado];
+    if (est !== undefined && est !== null && String(est).trim() !== "") {
+      return false;
+    }
+  }
+  // Respaldo: si por algún motivo no tenemos columna ESTADO, usamos
+  // FECHA VENTA como indicador alternativo.
   if (cols.fechaVenta >= 0) {
     const fv = fila[cols.fechaVenta];
     if (fv !== undefined && fv !== null && String(fv).trim() !== "") {
-      return false; // tiene fecha de venta → está vendido
-    }
-  }
-  if (cols.estado >= 0) {
-    const est = normalizar(String(fila[cols.estado] || ""));
-    if (
-      est.includes("VENDIDO") ||
-      est.includes("RESERVADO") ||
-      est.includes("DEVOLUCION") ||
-      est.includes("GARANTIA")
-    ) {
       return false;
     }
   }
