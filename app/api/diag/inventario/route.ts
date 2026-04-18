@@ -1,11 +1,19 @@
 import { getServerSession } from "next-auth";
 import { authOptions, SessionConSede } from "@/lib/auth";
 import { leerRango, listarHojas } from "@/lib/google-sheets";
+import { listarDisponibles } from "@/lib/inventario";
 import { NextResponse } from "next/server";
 
 /**
- * Diagnóstico del inventario — muestra las hojas disponibles y las primeras
- * filas de la primera hoja que contiene "INVENTARIO".
+ * Diagnóstico detallado del inventario — para que Leonardo me mande la
+ * salida y yo pueda ver exactamente qué hay en la hoja.
+ *
+ * Retorna:
+ *   - Todas las hojas del libro
+ *   - Las hojas que incluyen "INVENTARIO" en el nombre
+ *   - Las primeras 30 filas crudas de cada una
+ *   - Conteo de productos disponibles detectados (2026+)
+ *   - Muestra de los primeros 5 disponibles
  */
 export async function GET() {
   const session = (await getServerSession(authOptions)) as SessionConSede | null;
@@ -17,38 +25,55 @@ export async function GET() {
     return NextResponse.json({ error: "Sin sede asignada" }, { status: 403 });
   }
 
+  const resultado: any = {
+    sede: sede.nombre,
+    libroId: sede.libroId,
+    reglas: {
+      anioMinimo: 2026,
+      nota: "Solo consideramos filas con FECHA INGRESO 2026+",
+    },
+  };
+
   try {
     const hojas = await listarHojas(sede.libroId);
-    const candidatos = hojas.filter((h) => h.toUpperCase().includes("INVENTARIO"));
+    resultado.hojasDisponibles = hojas;
+
+    const candidatos = hojas.filter((h) =>
+      h.toUpperCase().includes("INVENTARIO")
+    );
+    resultado.hojasInventario = candidatos;
+
     if (candidatos.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "No hay hojas de inventario",
-        hojasDisponibles: hojas,
-      });
+      resultado.error = "No hay hojas con 'INVENTARIO' en el nombre";
+      return NextResponse.json(resultado);
     }
 
-    const resultados: any = {};
+    resultado.hojas = {};
     for (const hoja of candidatos) {
-      const filas = await leerRango(sede.libroId, `'${hoja}'!A1:Z6`);
-      resultados[hoja] = {
-        headers: filas[0] || [],
-        muestra: filas.slice(1),
+      const filas = await leerRango(sede.libroId, `'${hoja}'!A1:Z30`);
+      resultado.hojas[hoja] = {
+        totalFilasLeidas: filas.length,
+        filasConNumero: filas.map((f, i) => ({
+          row: i + 1,
+          valores: f,
+        })),
       };
     }
 
-    return NextResponse.json({
-      ok: true,
-      sede: sede.nombre,
-      libroId: sede.libroId,
-      hojasDisponibles: hojas,
-      hojasInventario: candidatos,
-      datos: resultados,
-    });
+    // Intentar correr listarDisponibles para ver qué detecta
+    try {
+      const disponibles = await listarDisponibles(sede.libroId);
+      resultado.disponibles = {
+        total: disponibles.length,
+        muestra: disponibles.slice(0, 10),
+      };
+    } catch (e: any) {
+      resultado.disponibles = { error: e?.message || "Error" };
+    }
+
+    return NextResponse.json(resultado);
   } catch (error: any) {
-    return NextResponse.json(
-      { ok: false, error: error?.message || "Error" },
-      { status: 500 }
-    );
+    resultado.error = error?.message || "Error desconocido";
+    return NextResponse.json(resultado, { status: 500 });
   }
 }

@@ -111,20 +111,23 @@ export async function hojaInventario(libroId: string): Promise<string> {
 }
 
 /**
- * Detecta la fila de headers escaneando las primeras 10 filas y eligiendo la
- * que tiene al menos 2 columnas reconocibles (MARCA, EQUIPO o IMEI). Útil
- * cuando la hoja tiene un título en la fila 1 y los headers reales están
- * en la fila 2, 3 o 4.
- *
- * Retorna { headerRowIndex, headers, dataRows } con los datos posteriores
- * al header. headerRowIndex es 0-indexed dentro de filasTotales.
+ * Año mínimo — regla de Leonardo: datos anteriores a 2026 están sucios
+ * y deben ignorarse para evitar confusión del sistema.
+ */
+const ANIO_MINIMO = 2026;
+
+/**
+ * Detecta la fila de headers escaneando las primeras N filas y eligiendo la
+ * que tiene más columnas reconocibles (MARCA, EQUIPO, IMEI, etc.). Útil
+ * cuando la hoja tiene un título en la fila 1 o contenido histórico arriba
+ * antes de los headers reales.
  */
 function detectarHeaderRow(filasTotales: any[][]): {
   headerRowIndex: number;
   headers: string[];
   dataRows: any[][];
 } {
-  const maxScan = Math.min(10, filasTotales.length);
+  const maxScan = Math.min(30, filasTotales.length);
   let mejorIndex = -1;
   let mejorScore = 0;
   for (let i = 0; i < maxScan; i++) {
@@ -149,8 +152,8 @@ function detectarHeaderRow(filasTotales: any[][]): {
       `No encontré fila de headers válida en las primeras ${maxScan} filas. ` +
         `Necesito al menos 2 columnas con nombres como MARCA, EQUIPO, IMEI, COLOR. ` +
         `Primeras filas: ${filasTotales
-          .slice(0, Math.min(4, filasTotales.length))
-          .map((r) => (r || []).join("|"))
+          .slice(0, Math.min(6, filasTotales.length))
+          .map((r, idx) => `[${idx + 1}] ${(r || []).join(" | ")}`)
           .join(" // ")}`
     );
   }
@@ -159,6 +162,33 @@ function detectarHeaderRow(filasTotales: any[][]): {
     headers: (filasTotales[mejorIndex] || []).map((x) => String(x)),
     dataRows: filasTotales.slice(mejorIndex + 1),
   };
+}
+
+/**
+ * Determina si una fila corresponde al período 2026 o posterior, mirando
+ * la columna FECHA INGRESO. Regla de negocio: ignoramos todo lo anterior
+ * porque los registros históricos están desordenados y pueden confundir
+ * la lógica (columnas desplazadas, estados inconsistentes, etc.).
+ *
+ * - Si no existe la columna FECHA INGRESO, retornamos true (no podemos filtrar).
+ * - Si la celda es número (serial date de Sheets), 46023 = 2026-01-01.
+ * - Si la celda es string, buscamos un año con patrón 20XX y comparamos.
+ * - Si no hay año detectable, retornamos false (preferimos excluir a incluir
+ *   ruido).
+ */
+function esDe2026OPosterior(fila: any[], cols: ColMapInventario): boolean {
+  if (cols.fechaIngreso < 0) return true;
+  const fi = fila[cols.fechaIngreso];
+  if (fi === undefined || fi === null) return false;
+  if (typeof fi === "number") {
+    // Serial date de Google Sheets: 46023 = 2026-01-01 (25569 epoch + 20454)
+    return fi >= 46023;
+  }
+  const s = String(fi).trim();
+  if (s === "") return false;
+  const match = s.match(/20\d{2}/);
+  if (!match) return false;
+  return parseInt(match[0], 10) >= ANIO_MINIMO;
 }
 
 function filaAProducto(
@@ -238,6 +268,9 @@ export async function listarDisponibles(
   const productos: Producto[] = [];
   for (let i = 0; i < dataRows.length; i++) {
     const fila = dataRows[i] || [];
+    // Filtro 1: regla de 2026+ (ignorar data histórica sucia)
+    if (!esDe2026OPosterior(fila, cols)) continue;
+    // Filtro 2: solo disponibles (no vendidos)
     if (!estaDisponible(fila, cols)) continue;
     // +2 porque headerRowIndex es 0-indexed, Sheets es 1-indexed, y sumamos
     // 1 más porque i es offset desde la fila de datos (no del header)
@@ -279,6 +312,9 @@ export async function buscarPorImei(
   const imeiLimpio = String(imei).replace(/\D/g, "");
   for (let i = 0; i < dataRows.length; i++) {
     const fila = dataRows[i] || [];
+    // Filtro 2026+ — si el equipo es histórico sucio, lo tratamos como
+    // no existente para no meternos en líos con datos desordenados.
+    if (!esDe2026OPosterior(fila, cols)) continue;
     const imei1 =
       cols.imei1 >= 0 ? String(fila[cols.imei1] || "").replace(/\D/g, "") : "";
     const imei2 =
@@ -333,8 +369,10 @@ export async function crearProducto(
     throw new Error(`IMEI 2 debe ser 15 dígitos (tiene ${imei2.length})`);
   }
 
-  // Validar UNICIDAD — revisa todas las filas (vendidas e inactivas también)
+  // Validar UNICIDAD — revisa TODOS los registros 2026+ (vendidos incluidos).
+  // Los pre-2026 los ignoramos porque son históricos sucios según Leonardo.
   for (const fila of dataRows) {
+    if (!esDe2026OPosterior(fila, cols)) continue;
     const exist1 =
       cols.imei1 >= 0 ? String(fila[cols.imei1] || "").replace(/\D/g, "") : "";
     const exist2 =
