@@ -51,10 +51,25 @@ export default function Dashboard() {
 
       <button
         disabled={!sede}
+        onClick={() => router.push("/venta/paso1")}
         className="w-full py-4 px-6 bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-[#0b0d12] font-bold rounded-xl transition-colors text-lg"
       >
         Nueva venta
       </button>
+
+      {/* Diagnóstico rápido de la hoja CLIENTES — visible solo para admins */}
+      {(session as any).esAdmin && (
+        <div className="mt-6 text-center">
+          <a
+            href="/api/diag/clientes"
+            target="_blank"
+            rel="noreferrer"
+            className="text-xs text-muted hover:text-white underline"
+          >
+            Ver diagnóstico de hoja CLIENTES
+          </a>
+        </div>
+      )}
     </main>
   );
 }
