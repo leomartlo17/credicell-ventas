@@ -9,6 +9,7 @@ export default function Dashboard() {
   const router = useRouter();
   const [inicializando, setInicializando] = useState(false);
   const [mensajeInit, setMensajeInit] = useState("");
+  const [detallesInit, setDetallesInit] = useState<any>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -17,13 +18,15 @@ export default function Dashboard() {
   async function inicializarHoja() {
     setInicializando(true);
     setMensajeInit("");
+    setDetallesInit(null);
     try {
       const r = await fetch("/api/admin/inicializar-inventario", { method: "POST" });
       const data = await r.json();
+      setDetallesInit(data);
       if (!r.ok || !data.ok) {
         setMensajeInit(`❌ ${data.error || "Error"}`);
       } else {
-        setMensajeInit(`✓ ${data.mensaje}`);
+        setMensajeInit(data.mensaje);
       }
     } catch (e: any) {
       setMensajeInit(`❌ ${e?.message || "Error de red"}`);
@@ -100,7 +103,24 @@ export default function Dashboard() {
               : "Inicializar hoja 'Inventario android 2026'"}
           </button>
           {mensajeInit && (
-            <p className="text-xs text-muted mb-3 text-center">{mensajeInit}</p>
+            <div className="mb-3 text-xs bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3">
+              <p className="text-white mb-2">{mensajeInit}</p>
+              {detallesInit?.hojasDespues && (
+                <p className="text-muted">
+                  Pestañas después: {detallesInit.hojasDespues.join(" · ")}
+                </p>
+              )}
+              {detallesInit?.logs && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-muted hover:text-white">
+                    Ver logs técnicos
+                  </summary>
+                  <pre className="mt-2 text-[10px] text-muted whitespace-pre-wrap break-all">
+                    {detallesInit.logs.join("\n")}
+                  </pre>
+                </details>
+              )}
+            </div>
           )}
 
           {sede && (
