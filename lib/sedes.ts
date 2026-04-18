@@ -23,11 +23,12 @@ export const SEDES: Sede[] = [
     nombre: "CREDICELL San Esteban",
     libroId: process.env.LIBRO_SAN_ESTEBAN || "",
     asesores: [
-      // Agregar aquí los emails de los asesores de San Esteban
-      // Ej: "paula@gmail.com"
+      "leomartlo17@gmail.com", // Leonardo — acceso como asesor también para probar el flujo de venta end-to-end
+      // Agregar aquí los emails de las asesoras de San Esteban cuando se asignen
+      // Ej: "paula.credicell@gmail.com"
     ],
     admins: [
-      // Emails de los admins (J.A, J.D)
+      "leomartlo17@gmail.com", // Leonardo — dueño / admin principal
     ]
   },
   // PITALITO — desactivado por ahora, se activa en fase multi-sede
