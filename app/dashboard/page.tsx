@@ -2,15 +2,35 @@
 
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const [inicializando, setInicializando] = useState(false);
+  const [mensajeInit, setMensajeInit] = useState("");
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
   }, [status, router]);
+
+  async function inicializarHoja() {
+    setInicializando(true);
+    setMensajeInit("");
+    try {
+      const r = await fetch("/api/admin/inicializar-inventario", { method: "POST" });
+      const data = await r.json();
+      if (!r.ok || !data.ok) {
+        setMensajeInit(`❌ ${data.error || "Error"}`);
+      } else {
+        setMensajeInit(`✓ ${data.mensaje}`);
+      }
+    } catch (e: any) {
+      setMensajeInit(`❌ ${e?.message || "Error de red"}`);
+    } finally {
+      setInicializando(false);
+    }
+  }
 
   if (status === "loading") {
     return (
@@ -65,32 +85,60 @@ export default function Dashboard() {
         Agregar producto al inventario
       </button>
 
-      {/* Diagnósticos — visibles solo para admins */}
+      {/* Controles admin */}
       {(session as any).esAdmin && (
-        <div className="mt-6 flex flex-col items-center gap-2">
-          <a
-            href="/admin/diagnostico"
-            className="text-sm text-brand hover:text-brand-light underline font-medium"
+        <div className="mt-8 pt-6 border-t border-[#2a2f3b]">
+          <p className="text-xs text-muted mb-3 font-medium">Admin</p>
+
+          <button
+            onClick={inicializarHoja}
+            disabled={inicializando}
+            className="w-full py-2 px-4 bg-[#1e242f] hover:bg-[#2a2f3b] disabled:opacity-40 border border-[#2a2f3b] text-white text-sm rounded-lg transition-colors mb-2"
           >
-            → Diagnóstico visual del inventario ←
-          </a>
-          <div className="flex gap-4 text-xs text-muted">
+            {inicializando
+              ? "Creando hoja..."
+              : "Inicializar hoja 'Inventario android 2026'"}
+          </button>
+          {mensajeInit && (
+            <p className="text-xs text-muted mb-3 text-center">{mensajeInit}</p>
+          )}
+
+          {sede && (
             <a
-              href="/api/diag/clientes"
+              href={`https://docs.google.com/spreadsheets/d/${sede.libroId}/edit`}
               target="_blank"
               rel="noreferrer"
-              className="hover:text-white underline"
+              className="block text-center text-xs text-muted hover:text-white underline mb-3"
             >
-              JSON clientes
+              Abrir libro en Google Sheets →
             </a>
+          )}
+
+          <div className="flex flex-col items-center gap-2 mt-4">
             <a
-              href="/api/diag/inventario"
-              target="_blank"
-              rel="noreferrer"
-              className="hover:text-white underline"
+              href="/admin/diagnostico"
+              className="text-sm text-brand hover:text-brand-light underline font-medium"
             >
-              JSON inventario
+              Diagnóstico visual del inventario
             </a>
+            <div className="flex gap-4 text-xs text-muted">
+              <a
+                href="/api/diag/clientes"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-white underline"
+              >
+                JSON clientes
+              </a>
+              <a
+                href="/api/diag/inventario"
+                target="_blank"
+                rel="noreferrer"
+                className="hover:text-white underline"
+              >
+                JSON inventario
+              </a>
+            </div>
           </div>
         </div>
       )}
