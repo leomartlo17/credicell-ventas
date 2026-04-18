@@ -2,6 +2,15 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { sedeDelUsuario, esAdmin } from "@/lib/sedes";
 
+// --- Auto-configurar NEXTAUTH_URL en Vercel ---
+// Sin esto NextAuth usaría VERCEL_URL (que incluye el hash del deployment
+// y cambia en cada push), rompiendo el redirect de Google OAuth.
+// VERCEL_PROJECT_PRODUCTION_URL es estable (ej: credicell-ventas-app.vercel.app).
+// Se define ANTES de NextAuth(authOptions) para que la librería la lea.
+if (!process.env.NEXTAUTH_URL && process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+  process.env.NEXTAUTH_URL = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+}
+
 const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
