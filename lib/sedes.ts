@@ -30,13 +30,14 @@ export const SEDES: Sede[] = [
       // Emails de los admins (J.A, J.D)
     ]
   },
-  {
-    id: "pitalito",
-    nombre: "CREDICELL Pitalito",
-    libroId: process.env.LIBRO_PITALITO || "",
-    asesores: [],
-    admins: []
-  }
+  // PITALITO — desactivado por ahora, se activa en fase multi-sede
+  // {
+  //   id: "pitalito",
+  //   nombre: "CREDICELL Pitalito",
+  //   libroId: process.env.LIBRO_PITALITO || "",
+  //   asesores: [],
+  //   admins: []
+  // }
 ];
 
 /**

@@ -1,6 +1,25 @@
 "use client";
 
+import { signIn, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+
 export default function Home() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (session) router.replace("/dashboard");
+  }, [session, router]);
+
+  if (status === "loading") {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <p className="text-muted text-sm">Cargando...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen flex items-center justify-center p-6">
       <div className="max-w-md w-full text-center">
@@ -18,14 +37,10 @@ export default function Home() {
 
         <button
           className="w-full py-3 px-6 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-xl transition-colors"
-          onClick={() => alert("Auth con Google — próximo paso")}
+          onClick={() => signIn("google")}
         >
           Iniciar sesión con Google
         </button>
-
-        <p className="text-muted text-xs mt-8">
-          Setup inicial · Auth pendiente de configurar en Google Cloud Console
-        </p>
       </div>
     </main>
   );
