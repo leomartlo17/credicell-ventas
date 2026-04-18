@@ -236,34 +236,94 @@ function Paso2Producto() {
           No hay productos disponibles con esos filtros.
         </p>
       ) : (
-        <div>
-          <div className="text-xs text-muted mb-2">
-            {productos.length} producto{productos.length === 1 ? "" : "s"} disponible
-            {productos.length === 1 ? "" : "s"}
-          </div>
-          <ul className="space-y-2">
-            {productos.map((p) => (
-              <li
-                key={p.fila}
-                className="bg-[#141821] border border-[#2a2f3b] rounded-lg p-3 flex items-center justify-between hover:border-brand cursor-pointer transition-colors"
-                onClick={() => seleccionar(p)}
+        <ListaAgrupada productos={productos} onSeleccionar={seleccionar} />
+      )}
+    </main>
+  );
+}
+
+/**
+ * Agrupa productos por marca+equipo+color y muestra "X disponibles" por grupo.
+ * Al clic en un grupo se expande mostrando los IMEIs individuales.
+ */
+function ListaAgrupada({
+  productos,
+  onSeleccionar,
+}: {
+  productos: Producto[];
+  onSeleccionar: (p: Producto) => void;
+}) {
+  const [expandido, setExpandido] = useState<string | null>(null);
+
+  type Grupo = { key: string; marca: string; equipo: string; color: string; items: Producto[] };
+  const grupos: Grupo[] = [];
+  const map = new Map<string, Grupo>();
+  for (const p of productos) {
+    const key = `${p.marca}__${p.equipo}__${p.color || ""}`;
+    if (!map.has(key)) {
+      const g: Grupo = {
+        key,
+        marca: p.marca,
+        equipo: p.equipo,
+        color: p.color,
+        items: [],
+      };
+      map.set(key, g);
+      grupos.push(g);
+    }
+    map.get(key)!.items.push(p);
+  }
+
+  return (
+    <div>
+      <div className="text-xs text-muted mb-2">
+        {grupos.length} modelo{grupos.length === 1 ? "" : "s"} · {productos.length}{" "}
+        equipo{productos.length === 1 ? "" : "s"} total
+      </div>
+      <ul className="space-y-2">
+        {grupos.map((g) => {
+          const abierto = expandido === g.key;
+          return (
+            <li
+              key={g.key}
+              className="bg-[#141821] border border-[#2a2f3b] rounded-lg overflow-hidden"
+            >
+              <button
+                className="w-full p-3 flex items-center justify-between hover:bg-[#1e242f] transition-colors text-left"
+                onClick={() => setExpandido(abierto ? null : g.key)}
               >
                 <div>
                   <div className="font-medium">
-                    {p.marca} · {p.equipo}
+                    {g.marca} · {g.equipo}
                   </div>
                   <div className="text-xs text-muted">
-                    {p.color && <>Color: {p.color} · </>}IMEI: {p.imei.slice(0, 8)}…
-                    {p.imei.slice(-3)}
+                    {g.color && <>{g.color} · </>}
+                    <span className="text-brand font-medium">
+                      {g.items.length} disponible{g.items.length === 1 ? "" : "s"}
+                    </span>
                   </div>
                 </div>
-                <div className="text-brand font-bold">→</div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </main>
+                <div className="text-muted">{abierto ? "▾" : "▸"}</div>
+              </button>
+              {abierto && (
+                <ul className="border-t border-[#2a2f3b]">
+                  {g.items.map((p) => (
+                    <li
+                      key={p.fila}
+                      className="p-3 pl-6 flex items-center justify-between hover:bg-[#1e242f] cursor-pointer border-b border-[#2a2f3b] last:border-b-0"
+                      onClick={() => onSeleccionar(p)}
+                    >
+                      <div className="font-mono text-sm">{p.imei}</div>
+                      <div className="text-brand text-sm font-bold">Seleccionar →</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

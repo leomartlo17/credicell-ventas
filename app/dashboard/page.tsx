@@ -57,6 +57,14 @@ export default function Dashboard() {
         Nueva venta
       </button>
 
+      <button
+        disabled={!sede}
+        onClick={() => router.push("/inventario/nuevo")}
+        className="w-full mt-3 py-3 px-6 bg-[#141821] hover:bg-[#1e242f] disabled:opacity-40 border border-[#2a2f3b] text-white rounded-xl transition-colors"
+      >
+        Agregar producto al inventario
+      </button>
+
       {/* Diagnósticos — visibles solo para admins */}
       {(session as any).esAdmin && (
         <div className="mt-6 flex flex-col items-center gap-2">
