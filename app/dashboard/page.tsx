@@ -93,7 +93,15 @@ export default function Dashboard() {
         onClick={() => router.push("/caja")}
         className="w-full mt-3 py-3 px-6 bg-[#141821] hover:bg-[#1e242f] disabled:opacity-40 border border-[#2a2f3b] text-white rounded-xl transition-colors"
       >
-        Ver caja (ingresos)
+        Ver caja (saldo + movimientos)
+      </button>
+
+      <button
+        disabled={!sede}
+        onClick={() => router.push("/caja/egresos")}
+        className="w-full mt-3 py-3 px-6 bg-[#141821] hover:bg-[#1e242f] disabled:opacity-40 border border-[#2a2f3b] text-white rounded-xl transition-colors"
+      >
+        Ver egresos (filtrable + anular)
       </button>
 
       {/* Controles admin */}

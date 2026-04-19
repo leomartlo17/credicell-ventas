@@ -12,6 +12,7 @@ const schema = z.object({
   urlFactura: z.string().optional(),
   prestamoOtraSede: z.boolean().optional(),
   observaciones: z.string().optional(),
+  autorizadoPor: z.string().optional(),
 });
 
 /**
@@ -58,13 +59,20 @@ export async function POST(req: Request) {
         urlFactura: d.urlFactura,
         prestamoOtraSede: d.prestamoOtraSede,
         observaciones: d.observaciones,
+        autorizadoPor: d.autorizadoPor,
       }
     );
     return NextResponse.json({ ok: true, filaEscrita, saldoDespues });
   } catch (error: any) {
+    const msg = error?.message || "Error al registrar egreso";
+    // Validaciones de negocio (factura obligatoria, autorización) son
+    // errores del usuario, no del servidor — responder 400 para que el
+    // frontend muestre el mensaje legible.
+    const esValidacion =
+      msg.includes("obligatoria") || msg.includes("Autorización");
     return NextResponse.json(
-      { ok: false, error: error?.message || "Error al registrar egreso" },
-      { status: 500 }
+      { ok: false, error: msg },
+      { status: esValidacion ? 400 : 500 }
     );
   }
 }

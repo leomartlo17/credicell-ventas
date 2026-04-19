@@ -21,7 +21,7 @@ export async function GET() {
   try {
     const [saldo, movimientos, catalogo] = await Promise.all([
       saldoActual(sede.libroId),
-      listarMovimientos(sede.libroId, 30),
+      listarMovimientos(sede.libroId, { limite: 30 }),
       catalogoCaja(sede.libroId),
     ]);
     return NextResponse.json({ saldo, movimientos, catalogo });

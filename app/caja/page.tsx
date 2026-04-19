@@ -10,7 +10,7 @@ type Mov = {
   fila: number;
   fecha: string;
   hora: string;
-  tipo: "INGRESO" | "EGRESO";
+  tipo: "INGRESO" | "EGRESO" | "ANULACION";
   concepto: string;
   establecimiento: string;
   monto: number;
@@ -20,6 +20,8 @@ type Mov = {
   urlFactura: string;
   prestamoOtraSede: boolean;
   observaciones: string;
+  anulado?: boolean;
+  esAnulacion?: boolean;
 };
 
 type Resumen = {
@@ -124,12 +126,20 @@ export default function Caja() {
         <div className="text-3xl font-bold text-brand mb-2">
           {saldo !== null ? fmt(saldo) : "..."}
         </div>
-        <button
-          onClick={() => router.push("/caja/egreso")}
-          className="px-3 py-2 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg text-sm"
-        >
-          + Registrar egreso
-        </button>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => router.push("/caja/egreso")}
+            className="px-3 py-2 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg text-sm"
+          >
+            + Registrar egreso
+          </button>
+          <button
+            onClick={() => router.push("/caja/egresos")}
+            className="px-3 py-2 bg-[#141821] border border-[#2a2f3b] hover:bg-[#1e242f] text-white rounded-lg text-sm"
+          >
+            Ver egresos
+          </button>
+        </div>
       </div>
 
       {/* ÚLTIMOS MOVIMIENTOS DE CAJA */}
@@ -144,32 +154,39 @@ export default function Caja() {
           </p>
         ) : (
           <ul className="space-y-2">
-            {movimientos.slice(0, 10).map((m) => (
-              <li
-                key={m.fila}
-                className="border-b border-[#1e242f] pb-2 last:border-b-0 text-xs"
-              >
-                <div className="flex items-center justify-between">
-                  <span
-                    className={
-                      m.tipo === "INGRESO"
-                        ? "text-green-400 font-bold"
-                        : "text-red-400 font-bold"
-                    }
-                  >
-                    {m.tipo === "INGRESO" ? "+" : "−"} {fmt(m.monto)}
-                  </span>
-                  <span className="text-muted">{m.fecha} {m.hora}</span>
-                </div>
-                <div className="text-muted mt-1">
-                  {m.concepto}
-                  {m.establecimiento && ` · ${m.establecimiento}`}
-                </div>
-                {m.referencia && (
-                  <div className="text-[10px] text-muted/70 mt-1">{m.referencia}</div>
-                )}
-              </li>
-            ))}
+            {movimientos.slice(0, 10).map((m) => {
+              const clase = m.esAnulacion
+                ? "text-yellow-400 font-bold"
+                : m.anulado
+                  ? "text-muted font-bold line-through"
+                  : m.tipo === "INGRESO"
+                    ? "text-green-400 font-bold"
+                    : "text-red-400 font-bold";
+              const signo = m.esAnulacion ? "↺" : m.tipo === "INGRESO" ? "+" : "−";
+              return (
+                <li
+                  key={m.fila}
+                  className="border-b border-[#1e242f] pb-2 last:border-b-0 text-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className={clase}>
+                      {signo} {fmt(Math.abs(m.monto))}
+                    </span>
+                    <span className="text-muted">{m.fecha} {m.hora}</span>
+                  </div>
+                  <div className="text-muted mt-1">
+                    {m.concepto}
+                    {m.establecimiento && ` · ${m.establecimiento}`}
+                    {m.anulado && (
+                      <span className="ml-1 text-[10px] text-muted">[ANULADO]</span>
+                    )}
+                  </div>
+                  {m.referencia && (
+                    <div className="text-[10px] text-muted/70 mt-1">{m.referencia}</div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

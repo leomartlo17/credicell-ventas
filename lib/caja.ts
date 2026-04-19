@@ -35,19 +35,29 @@ export const HOJA_CAJA = "Caja 2026";
 const HEADERS_CAJA = [
   "FECHA",
   "HORA",
-  "TIPO", // INGRESO | EGRESO
-  "CONCEPTO", // VENTA, CUOTA, PROVEEDOR, ASEO, etc.
-  "ESTABLECIMIENTO", // a quien se le pago / de donde vino
+  "TIPO", // INGRESO | EGRESO | ANULACION
+  "CONCEPTO",
+  "ESTABLECIMIENTO",
   "MONTO",
   "SALDO DESPUES",
   "ASESOR",
-  "REFERENCIA", // IMEI si es venta, cedula si es cuota, numero factura si es gasto
-  "FOTO FACTURA", // URL de la imagen (cuando aplica, egresos)
-  "PRESTAMO OTRA SEDE", // SI/NO — si el efectivo salio para una compra de otra sede
+  "REFERENCIA",
+  "FOTO FACTURA",
+  "PRESTAMO OTRA SEDE",
   "OBSERVACIONES",
+  "AUTORIZADO POR", // J.A, J.D, u otro — obligatorio si monto > UMBRAL_AUTORIZACION
+  "ANULA FILA", // número de fila que esta fila anula (solo para TIPO=ANULACION)
+  "ANULADO EN FILA", // número de fila que anula a esta (si está presente, esta fila quedó anulada)
 ];
 
-export type TipoMovimiento = "INGRESO" | "EGRESO";
+/**
+ * Umbrales de reglas para egresos. Cambiar aquí cambia la validación en
+ * toda la app (front+back). Montos en pesos colombianos.
+ */
+export const UMBRAL_FACTURA = 20_000; // > de este → URL factura obligatoria
+export const UMBRAL_AUTORIZACION = 100_000; // > de este → AUTORIZADO POR obligatorio
+
+export type TipoMovimiento = "INGRESO" | "EGRESO" | "ANULACION";
 
 export type MovimientoCaja = {
   tipo: TipoMovimiento;
@@ -59,14 +69,41 @@ export type MovimientoCaja = {
   urlFactura?: string;
   prestamoOtraSede?: boolean;
   observaciones?: string;
+  /** Quién autorizó el egreso. Obligatorio si monto > UMBRAL_AUTORIZACION. */
+  autorizadoPor?: string;
+  /** Si es TIPO=ANULACION, la fila de Caja 2026 que esta anula. */
+  anulaFila?: number;
 };
 
 async function asegurarHojaCaja(libroId: string): Promise<string> {
   const hojas = await listarHojas(libroId);
-  if (hojas.includes(HOJA_CAJA)) return HOJA_CAJA;
+  if (hojas.includes(HOJA_CAJA)) {
+    // Auto-migración suave: si la hoja existe pero le faltan columnas
+    // nuevas (AUTORIZADO POR, ANULA FILA, ANULADO EN FILA), las agregamos
+    // al final sin tocar data existente. Idempotente.
+    await asegurarHeadersCaja(libroId);
+    return HOJA_CAJA;
+  }
   await crearHoja(libroId, HOJA_CAJA);
   await escribirRango(libroId, `'${HOJA_CAJA}'!A1`, [HEADERS_CAJA]);
   return HOJA_CAJA;
+}
+
+/**
+ * Asegura que la hoja Caja 2026 tenga todos los headers actuales. Si
+ * faltan columnas nuevas (ej. AUTORIZADO POR), las agrega al final sin
+ * tocar datos existentes. Idempotente — si ya están todas, no hace nada.
+ */
+async function asegurarHeadersCaja(libroId: string): Promise<void> {
+  const fila1 = await leerRango(libroId, `'${HOJA_CAJA}'!A1:Z1`);
+  const existentes = (fila1[0] || []).map((x) =>
+    String(x || "").toUpperCase().trim()
+  );
+  const faltantes = HEADERS_CAJA.filter((h) => !existentes.includes(h));
+  if (faltantes.length === 0) return;
+  // Escribir headers completos (existentes + nuevos al final)
+  const nuevaFila = [...existentes.map((_, i) => (fila1[0] || [])[i] || ""), ...faltantes];
+  await escribirRango(libroId, `'${HOJA_CAJA}'!A1`, [nuevaFila]);
 }
 
 /**
@@ -81,9 +118,32 @@ export async function registrarMovimiento(
 ): Promise<{ filaEscrita: number; saldoDespues: number }> {
   const hoja = await asegurarHojaCaja(libroId);
 
+  // Validaciones de egresos con reglas estrictas
+  if (mov.tipo === "EGRESO") {
+    if (mov.monto > UMBRAL_FACTURA && !mov.urlFactura?.trim()) {
+      throw new Error(
+        `Foto de factura obligatoria para egresos > $${UMBRAL_FACTURA.toLocaleString("es-CO")}`
+      );
+    }
+    if (mov.monto > UMBRAL_AUTORIZACION && !mov.autorizadoPor?.trim()) {
+      throw new Error(
+        `Autorización obligatoria para egresos > $${UMBRAL_AUTORIZACION.toLocaleString("es-CO")}. ` +
+          `Registra quién autorizó (J.A, J.D, u otro).`
+      );
+    }
+  }
+
   // Calcular saldo actual para poner en columna SALDO DESPUES
   const saldoAntes = await saldoActual(libroId);
-  const delta = mov.tipo === "INGRESO" ? mov.monto : -mov.monto;
+  let delta = 0;
+  if (mov.tipo === "INGRESO") {
+    delta = mov.monto;
+  } else if (mov.tipo === "EGRESO") {
+    delta = -mov.monto;
+  } else if (mov.tipo === "ANULACION") {
+    // Una anulación invierte el signo del movimiento original
+    delta = mov.monto;
+  }
   const saldoDespues = saldoAntes + delta;
 
   const ahora = new Date();
@@ -103,9 +163,143 @@ export async function registrarMovimiento(
     (mov.urlFactura || "").trim(),
     mov.prestamoOtraSede ? "SI" : "",
     (mov.observaciones || "").trim(),
+    (mov.autorizadoPor || "").trim(),
+    mov.anulaFila ? mov.anulaFila : "",
+    "", // ANULADO EN FILA — lo escribimos después en anularMovimiento
   ];
   const { filaEscrita } = await agregarFila(libroId, hoja, fila);
   return { filaEscrita, saldoDespues };
+}
+
+/**
+ * Anula un movimiento existente. Regla Leonardo: nada se borra. Crea una
+ * fila nueva TIPO=ANULACION con el monto inverso, y marca la fila original
+ * con ANULADO EN FILA = nueva fila. El saldo se recalcula automáticamente
+ * — saldoActual() ignora pares original+anulación.
+ */
+export async function anularMovimiento(
+  libroId: string,
+  filaAnular: number,
+  motivo: string,
+  asesor: string
+): Promise<{ filaAnulacion: number; saldoDespues: number }> {
+  const hoja = await asegurarHojaCaja(libroId);
+  const filas = await leerRango(libroId, `'${hoja}'!A1:Z`);
+  if (filas.length < 2) {
+    throw new Error("Caja vacía — no hay movimientos para anular");
+  }
+  if (filaAnular < 2 || filaAnular > filas.length) {
+    throw new Error(`Fila ${filaAnular} no existe en Caja 2026`);
+  }
+
+  const headers = (filas[0] || []).map((x) =>
+    String(x || "").toUpperCase().trim()
+  );
+  const colMap = mapearColumnasCaja(headers);
+  const orig = filas[filaAnular - 1] || [];
+
+  const tipoOrig = String(orig[colMap.tipo] || "").toUpperCase().trim();
+  if (tipoOrig === "ANULACION") {
+    throw new Error("No se puede anular una anulación");
+  }
+  const anuladoEnFila =
+    colMap.anuladoEnFila >= 0
+      ? String(orig[colMap.anuladoEnFila] || "").trim()
+      : "";
+  if (anuladoEnFila) {
+    throw new Error(
+      `Este movimiento ya fue anulado en la fila ${anuladoEnFila}`
+    );
+  }
+
+  const monto = parseNumero(orig[colMap.monto]);
+  const concepto = String(orig[colMap.concepto] || "");
+  const establecimiento = String(orig[colMap.establecimiento] || "");
+  const referencia = String(orig[colMap.referencia] || "");
+
+  // Crear fila de anulación
+  const { filaEscrita: filaAnulacion, saldoDespues } = await registrarMovimiento(
+    libroId,
+    {
+      tipo: "ANULACION",
+      concepto: `ANULA ${tipoOrig}: ${concepto}`,
+      establecimiento,
+      // Para ANULACION el monto que guardamos es siempre positivo;
+      // el signo se calcula en registrarMovimiento (delta invertido).
+      monto: tipoOrig === "INGRESO" ? -monto : monto,
+      asesor,
+      referencia,
+      observaciones: motivo,
+      anulaFila: filaAnular,
+    }
+  );
+
+  // Marcar la fila original como ANULADO EN FILA = filaAnulacion
+  // La columna es dinámica según headers actuales.
+  if (colMap.anuladoEnFila >= 0) {
+    const letra = colLetra(colMap.anuladoEnFila);
+    const { actualizarCelda } = await import("@/lib/google-sheets");
+    await actualizarCelda(
+      libroId,
+      `'${hoja}'!${letra}${filaAnular}`,
+      filaAnulacion
+    );
+  }
+
+  return { filaAnulacion, saldoDespues };
+}
+
+/**
+ * Convierte índice de columna (0-based) a letra de Sheets (A..Z, AA..ZZ).
+ * Soporta hasta 702 columnas — suficiente para nuestro caso.
+ */
+function colLetra(idx: number): string {
+  let s = "";
+  let n = idx;
+  while (n >= 0) {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  }
+  return s;
+}
+
+type ColMapCaja = {
+  fecha: number;
+  hora: number;
+  tipo: number;
+  concepto: number;
+  establecimiento: number;
+  monto: number;
+  saldoDespues: number;
+  asesor: number;
+  referencia: number;
+  fotoFactura: number;
+  prestamo: number;
+  observaciones: number;
+  autorizadoPor: number;
+  anulaFila: number;
+  anuladoEnFila: number;
+};
+
+function mapearColumnasCaja(headers: string[]): ColMapCaja {
+  const col = (n: string) => headers.findIndex((h) => h === n);
+  return {
+    fecha: col("FECHA"),
+    hora: col("HORA"),
+    tipo: col("TIPO"),
+    concepto: col("CONCEPTO"),
+    establecimiento: col("ESTABLECIMIENTO"),
+    monto: col("MONTO"),
+    saldoDespues: col("SALDO DESPUES"),
+    asesor: col("ASESOR"),
+    referencia: col("REFERENCIA"),
+    fotoFactura: col("FOTO FACTURA"),
+    prestamo: col("PRESTAMO OTRA SEDE"),
+    observaciones: col("OBSERVACIONES"),
+    autorizadoPor: col("AUTORIZADO POR"),
+    anulaFila: col("ANULA FILA"),
+    anuladoEnFila: col("ANULADO EN FILA"),
+  };
 }
 
 /**
@@ -119,16 +313,35 @@ export async function saldoActual(libroId: string): Promise<number> {
   const filas = await leerRango(libroId, `'${HOJA_CAJA}'!A1:Z`);
   if (filas.length < 2) return 0;
 
-  const headers = (filas[0] || []).map((x) => String(x || "").toUpperCase());
-  const idxTipo = headers.findIndex((h) => h.trim() === "TIPO");
-  const idxMonto = headers.findIndex((h) => h.trim() === "MONTO");
-  if (idxTipo < 0 || idxMonto < 0) return 0;
+  const headers = (filas[0] || []).map((x) =>
+    String(x || "").toUpperCase().trim()
+  );
+  const cols = mapearColumnasCaja(headers);
+  if (cols.tipo < 0 || cols.monto < 0) return 0;
+
+  // Primer pase: identificar filas anuladas (que tienen ANULADO EN FILA
+  // con valor) y filas de anulación (TIPO=ANULACION). Ambas grupos se
+  // excluyen del cálculo del saldo, por lo que el neto de un par
+  // (movimiento+anulación) es cero.
+  const anuladas = new Set<number>();
+  const anulaciones = new Set<number>();
+  for (let i = 1; i < filas.length; i++) {
+    const f = filas[i] || [];
+    const tipo = String(f[cols.tipo] || "").toUpperCase().trim();
+    if (tipo === "ANULACION") anulaciones.add(i + 1);
+    if (cols.anuladoEnFila >= 0) {
+      const ae = String(f[cols.anuladoEnFila] || "").trim();
+      if (ae) anuladas.add(i + 1);
+    }
+  }
 
   let saldo = 0;
   for (let i = 1; i < filas.length; i++) {
+    const filaNum = i + 1;
+    if (anuladas.has(filaNum) || anulaciones.has(filaNum)) continue;
     const fila = filas[i] || [];
-    const tipo = String(fila[idxTipo] || "").toUpperCase().trim();
-    const monto = parseNumero(fila[idxMonto]);
+    const tipo = String(fila[cols.tipo] || "").toUpperCase().trim();
+    const monto = parseNumero(fila[cols.monto]);
     if (tipo === "INGRESO") saldo += monto;
     else if (tipo === "EGRESO") saldo -= monto;
   }
@@ -140,50 +353,130 @@ export async function saldoActual(libroId: string): Promise<number> {
  * a más antiguo (por orden de fila en la hoja — el más abajo es el más
  * nuevo).
  */
+export type MovimientoEnriquecido = MovimientoCaja & {
+  fecha: string;
+  hora: string;
+  saldoDespues: number;
+  fila: number;
+  anuladoEnFila?: number;
+  /** true si este movimiento tiene una anulación (no suma al saldo). */
+  anulado: boolean;
+  /** true si este movimiento ES una anulación de otra fila. */
+  esAnulacion: boolean;
+};
+
 export async function listarMovimientos(
   libroId: string,
-  limite: number = 20
-): Promise<Array<MovimientoCaja & { fecha: string; hora: string; saldoDespues: number; fila: number }>> {
+  opciones: {
+    limite?: number;
+    soloEgresos?: boolean;
+    soloIngresos?: boolean;
+    desde?: Date | null;
+    hasta?: Date | null;
+    concepto?: string;
+    establecimiento?: string;
+    autorizadoPor?: string;
+    incluirAnulados?: boolean;
+  } = {}
+): Promise<MovimientoEnriquecido[]> {
+  const {
+    limite = 20,
+    soloEgresos = false,
+    soloIngresos = false,
+    desde = null,
+    hasta = null,
+    concepto,
+    establecimiento,
+    autorizadoPor,
+    incluirAnulados = true,
+  } = opciones;
+
   const hojas = await listarHojas(libroId);
   if (!hojas.includes(HOJA_CAJA)) return [];
   const filas = await leerRango(libroId, `'${HOJA_CAJA}'!A1:Z`);
   if (filas.length < 2) return [];
 
-  const headers = (filas[0] || []).map((x) => String(x || "").toUpperCase().trim());
-  const col = (n: string) => headers.findIndex((h) => h === n);
-  const ixs = {
-    fecha: col("FECHA"),
-    hora: col("HORA"),
-    tipo: col("TIPO"),
-    concepto: col("CONCEPTO"),
-    establecimiento: col("ESTABLECIMIENTO"),
-    monto: col("MONTO"),
-    saldo: col("SALDO DESPUES"),
-    asesor: col("ASESOR"),
-    referencia: col("REFERENCIA"),
-    foto: col("FOTO FACTURA"),
-    prestamo: col("PRESTAMO OTRA SEDE"),
-    obs: col("OBSERVACIONES"),
-  };
+  const headers = (filas[0] || []).map((x) =>
+    String(x || "").toUpperCase().trim()
+  );
+  const ixs = mapearColumnasCaja(headers);
 
-  const result: Array<any> = [];
+  const result: MovimientoEnriquecido[] = [];
   for (let i = 1; i < filas.length; i++) {
     const f = filas[i] || [];
     if (!f[ixs.tipo]) continue;
+    const tipo = String(f[ixs.tipo] || "").toUpperCase() as TipoMovimiento;
+    const filaNum = i + 1;
+    const anuladoEnFilaRaw =
+      ixs.anuladoEnFila >= 0 ? String(f[ixs.anuladoEnFila] || "").trim() : "";
+    const anuladoEnFila = anuladoEnFilaRaw
+      ? parseInt(anuladoEnFilaRaw, 10)
+      : undefined;
+    const anulado = Boolean(anuladoEnFila);
+    const esAnulacion = tipo === "ANULACION";
+
+    // Filtros
+    if (soloEgresos && tipo !== "EGRESO" && !esAnulacion) continue;
+    if (soloIngresos && tipo !== "INGRESO") continue;
+    if (!incluirAnulados && (anulado || esAnulacion)) continue;
+
+    const fechaStr = String(f[ixs.fecha] || "");
+    if (desde || hasta) {
+      const fechaMov = parsearFecha(fechaStr);
+      if (desde && (!fechaMov || fechaMov < desde)) continue;
+      if (hasta && (!fechaMov || fechaMov > hasta)) continue;
+    }
+    if (
+      concepto &&
+      !String(f[ixs.concepto] || "")
+        .toUpperCase()
+        .includes(concepto.toUpperCase())
+    )
+      continue;
+    if (
+      establecimiento &&
+      !String(f[ixs.establecimiento] || "")
+        .toUpperCase()
+        .includes(establecimiento.toUpperCase())
+    )
+      continue;
+    if (
+      autorizadoPor &&
+      ixs.autorizadoPor >= 0 &&
+      !String(f[ixs.autorizadoPor] || "")
+        .toUpperCase()
+        .includes(autorizadoPor.toUpperCase())
+    )
+      continue;
+
     result.push({
-      fila: i + 1,
-      fecha: String(f[ixs.fecha] || ""),
+      fila: filaNum,
+      fecha: fechaStr,
       hora: String(f[ixs.hora] || ""),
-      tipo: String(f[ixs.tipo] || "").toUpperCase() as TipoMovimiento,
+      tipo,
       concepto: String(f[ixs.concepto] || ""),
       establecimiento: String(f[ixs.establecimiento] || ""),
       monto: parseNumero(f[ixs.monto]),
-      saldoDespues: parseNumero(f[ixs.saldo]),
+      saldoDespues: parseNumero(f[ixs.saldoDespues]),
       asesor: String(f[ixs.asesor] || ""),
       referencia: String(f[ixs.referencia] || ""),
-      urlFactura: String(f[ixs.foto] || ""),
-      prestamoOtraSede: String(f[ixs.prestamo] || "").toUpperCase() === "SI",
-      observaciones: String(f[ixs.obs] || ""),
+      urlFactura:
+        ixs.fotoFactura >= 0 ? String(f[ixs.fotoFactura] || "") : "",
+      prestamoOtraSede:
+        ixs.prestamo >= 0
+          ? String(f[ixs.prestamo] || "").toUpperCase() === "SI"
+          : false,
+      observaciones:
+        ixs.observaciones >= 0 ? String(f[ixs.observaciones] || "") : "",
+      autorizadoPor:
+        ixs.autorizadoPor >= 0 ? String(f[ixs.autorizadoPor] || "") : "",
+      anulaFila:
+        ixs.anulaFila >= 0 && f[ixs.anulaFila]
+          ? parseInt(String(f[ixs.anulaFila]), 10)
+          : undefined,
+      anuladoEnFila,
+      anulado,
+      esAnulacion,
     });
   }
   // Más reciente primero

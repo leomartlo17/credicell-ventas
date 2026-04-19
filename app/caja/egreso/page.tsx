@@ -1,32 +1,57 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
 const NUEVO = "__NUEVO__";
+const UMBRAL_FACTURA = 20_000;
+const UMBRAL_AUTORIZACION = 100_000;
 
-export default function RegistrarEgreso() {
+export default function EgresoWrapper() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen flex items-center justify-center">
+          <p className="text-muted text-sm">Cargando...</p>
+        </main>
+      }
+    >
+      <RegistrarEgreso />
+    </Suspense>
+  );
+}
+
+function RegistrarEgreso() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [catalogo, setCatalogo] = useState<{
     conceptos: string[];
     establecimientos: string[];
   }>({ conceptos: [], establecimientos: [] });
   const [saldo, setSaldo] = useState<number | null>(null);
+  const [fotoUploadDisponible, setFotoUploadDisponible] = useState(false);
 
+  // Pre-carga desde query params (viene de "Duplicar" en /caja/egresos)
   const [form, setForm] = useState({
-    concepto: "",
+    concepto: searchParams.get("concepto") || "",
     conceptoNuevo: "",
-    establecimiento: "",
+    establecimiento: searchParams.get("establecimiento") || "",
     establecimientoNuevo: "",
-    monto: "",
+    monto: searchParams.get("monto") || "",
     referencia: "",
     urlFactura: "",
-    prestamoOtraSede: false,
+    prestamoOtraSede: searchParams.get("prestamo") === "1",
     observaciones: "",
+    autorizadoPor: searchParams.get("autorizado") || "",
   });
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+
   const [estado, setEstado] = useState<
     | { tipo: "inicial" }
     | { tipo: "guardando" }
@@ -48,6 +73,11 @@ export default function RegistrarEgreso() {
           setSaldo(d.saldo);
         }
       });
+    // Detectar si upload de fotos está configurado (env var en Vercel)
+    fetch("/api/caja/foto-upload")
+      .then((r) => r.json())
+      .then((d) => setFotoUploadDisponible(Boolean(d.disponible)))
+      .catch(() => setFotoUploadDisponible(false));
   }, [status]);
 
   if (status === "loading" || !session) {
@@ -68,19 +98,71 @@ export default function RegistrarEgreso() {
     form.establecimiento === NUEVO
       ? form.establecimientoNuevo.trim()
       : form.establecimiento;
+  const montoNum = Number(form.monto) || 0;
+
+  // Reglas de validación visibles
+  const requiereFactura = montoNum > UMBRAL_FACTURA;
+  const requiereAutorizacion = montoNum > UMBRAL_AUTORIZACION;
+  const faltaFactura =
+    requiereFactura && !form.urlFactura.trim() && !archivo;
+  const faltaAutorizacion =
+    requiereAutorizacion && !form.autorizadoPor.trim();
+
+  async function subirFotoSiHay(): Promise<string | null> {
+    if (!archivo) return null;
+    setSubiendoFoto(true);
+    try {
+      const fd = new FormData();
+      fd.append("archivo", archivo);
+      fd.append("referencia", form.referencia.trim());
+      const r = await fetch("/api/caja/foto-upload", {
+        method: "POST",
+        body: fd,
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        throw new Error(d.error || "Error subiendo foto");
+      }
+      return d.url;
+    } finally {
+      setSubiendoFoto(false);
+    }
+  }
 
   async function guardar() {
     if (!conceptoFinal) {
       setEstado({ tipo: "error", mensaje: "Selecciona o crea un concepto" });
       return;
     }
-    const montoNum = Number(form.monto);
     if (!montoNum || montoNum <= 0) {
       setEstado({ tipo: "error", mensaje: "Monto inválido" });
       return;
     }
+    if (faltaFactura) {
+      setEstado({
+        tipo: "error",
+        mensaje: `Foto de factura obligatoria para egresos > $${UMBRAL_FACTURA.toLocaleString("es-CO")}`,
+      });
+      return;
+    }
+    if (faltaAutorizacion) {
+      setEstado({
+        tipo: "error",
+        mensaje: `Autorización obligatoria para egresos > $${UMBRAL_AUTORIZACION.toLocaleString("es-CO")}`,
+      });
+      return;
+    }
+
     setEstado({ tipo: "guardando" });
     try {
+      // 1) Subir foto a Drive si hay archivo
+      let urlFinal = form.urlFactura.trim();
+      if (archivo) {
+        const uploaded = await subirFotoSiHay();
+        if (uploaded) urlFinal = uploaded;
+      }
+
+      // 2) Registrar egreso
       const r = await fetch("/api/caja/egreso", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -89,9 +171,10 @@ export default function RegistrarEgreso() {
           establecimiento: establecimientoFinal || undefined,
           monto: montoNum,
           referencia: form.referencia.trim() || undefined,
-          urlFactura: form.urlFactura.trim() || undefined,
+          urlFactura: urlFinal || undefined,
           prestamoOtraSede: form.prestamoOtraSede,
           observaciones: form.observaciones.trim() || undefined,
+          autorizadoPor: form.autorizadoPor.trim() || undefined,
         }),
       });
       const data = await r.json();
@@ -122,10 +205,10 @@ export default function RegistrarEgreso() {
         </div>
         <div className="flex gap-2">
           <button
-            onClick={() => router.push("/caja")}
+            onClick={() => router.push("/caja/egresos")}
             className="flex-1 py-3 bg-[#141821] border border-[#2a2f3b] text-white rounded-lg"
           >
-            Ver caja
+            Ver egresos
           </button>
           <button
             onClick={() => window.location.reload()}
@@ -156,8 +239,8 @@ export default function RegistrarEgreso() {
 
       <h1 className="text-2xl font-bold mb-1">Registrar egreso</h1>
       <p className="text-muted text-sm mb-6">
-        Sale plata de la caja de la tienda. Foto de factura obligatoria para
-        gastos &gt; $20.000.
+        Sale plata de la caja de la tienda. Reglas:
+        factura obligatoria &gt; {fmt(UMBRAL_FACTURA)}, autorización obligatoria &gt; {fmt(UMBRAL_AUTORIZACION)}.
       </p>
 
       <div className="space-y-3">
@@ -209,7 +292,9 @@ export default function RegistrarEgreso() {
               type="text"
               placeholder="Ej: Droguería San Esteban"
               value={form.establecimientoNuevo}
-              onChange={(e) => actualizar("establecimientoNuevo", e.target.value)}
+              onChange={(e) =>
+                actualizar("establecimientoNuevo", e.target.value)
+              }
               className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-yellow-500 text-sm"
             />
           )}
@@ -221,9 +306,46 @@ export default function RegistrarEgreso() {
             type="tel"
             inputMode="numeric"
             value={form.monto}
-            onChange={(e) => actualizar("monto", e.target.value.replace(/[^\d]/g, ""))}
+            onChange={(e) =>
+              actualizar("monto", e.target.value.replace(/[^\d]/g, ""))
+            }
             placeholder="50000"
             className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
+          />
+          {montoNum > 0 && (
+            <div className="mt-1 text-[11px] text-muted">
+              {requiereFactura && (
+                <span className={faltaFactura ? "text-yellow-400" : "text-green-400"}>
+                  {faltaFactura ? "⚠ " : "✓ "}
+                  Requiere factura
+                </span>
+              )}
+              {requiereFactura && requiereAutorizacion && " · "}
+              {requiereAutorizacion && (
+                <span className={faltaAutorizacion ? "text-yellow-400" : "text-green-400"}>
+                  {faltaAutorizacion ? "⚠ " : "✓ "}
+                  Requiere autorización
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Autorizado por — visible siempre, destacado si obligatorio */}
+        <div>
+          <label className="block text-xs text-muted mb-1">
+            Autorizado por {requiereAutorizacion && <span className="text-yellow-400">*</span>}
+          </label>
+          <input
+            type="text"
+            value={form.autorizadoPor}
+            onChange={(e) => actualizar("autorizadoPor", e.target.value)}
+            placeholder="J.A, J.D, o nombre de quien autorizó"
+            className={`w-full px-3 py-2 bg-[#0b0d12] border rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none text-sm ${
+              faltaAutorizacion
+                ? "border-yellow-700 focus:border-yellow-500"
+                : "border-[#2a2f3b] focus:border-brand"
+            }`}
           />
         </div>
 
@@ -240,28 +362,68 @@ export default function RegistrarEgreso() {
           />
         </div>
 
+        {/* Upload de foto — cambia entre file picker y URL manual según setup */}
         <div>
           <label className="block text-xs text-muted mb-1">
-            URL foto de factura (sube la foto a Drive y pega el link)
+            Factura (foto) {requiereFactura && <span className="text-yellow-400">*</span>}
           </label>
-          <input
-            type="url"
-            value={form.urlFactura}
-            onChange={(e) => actualizar("urlFactura", e.target.value)}
-            placeholder="https://drive.google.com/..."
-            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
-          />
-          <p className="text-[10px] text-muted mt-1">
-            (Próxima versión: podrás subir la foto directamente desde el
-            celular, sin pasar por Drive a mano.)
-          </p>
+          {fotoUploadDisponible ? (
+            <div className="space-y-2">
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] || null;
+                  setArchivo(f);
+                  if (f) actualizar("urlFactura", ""); // si subieron archivo, ignora URL
+                }}
+                className="w-full text-sm text-muted file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-brand file:text-[#0b0d12] file:text-sm file:font-medium hover:file:bg-brand-light"
+              />
+              {archivo && (
+                <div className="text-xs text-green-400">
+                  ✓ {archivo.name} ({Math.round(archivo.size / 1024)} KB)
+                </div>
+              )}
+              <details className="text-xs text-muted">
+                <summary className="cursor-pointer hover:text-white">
+                  O pega una URL de Drive (avanzado)
+                </summary>
+                <input
+                  type="url"
+                  value={form.urlFactura}
+                  onChange={(e) => actualizar("urlFactura", e.target.value)}
+                  placeholder="https://drive.google.com/..."
+                  className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
+                />
+              </details>
+            </div>
+          ) : (
+            <div>
+              <input
+                type="url"
+                value={form.urlFactura}
+                onChange={(e) => actualizar("urlFactura", e.target.value)}
+                placeholder="https://drive.google.com/..."
+                className={`w-full px-3 py-2 bg-[#0b0d12] border rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none text-sm ${
+                  faltaFactura
+                    ? "border-yellow-700 focus:border-yellow-500"
+                    : "border-[#2a2f3b] focus:border-brand"
+                }`}
+              />
+              <p className="text-[10px] text-muted mt-1">
+                Upload directo aún no está configurado. Sube la foto a Drive y pega el link.
+              </p>
+            </div>
+          )}
         </div>
 
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             checked={form.prestamoOtraSede}
-            onChange={(e) => actualizar("prestamoOtraSede", e.target.checked)}
+            onChange={(e) =>
+              actualizar("prestamoOtraSede", e.target.checked)
+            }
             className="w-4 h-4"
           />
           <span>Préstamo para compra de OTRA sede (no de esta)</span>
@@ -280,10 +442,14 @@ export default function RegistrarEgreso() {
 
       <button
         onClick={guardar}
-        disabled={estado.tipo === "guardando"}
+        disabled={estado.tipo === "guardando" || subiendoFoto}
         className="w-full mt-6 py-3 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg"
       >
-        {estado.tipo === "guardando" ? "Guardando..." : "Registrar egreso"}
+        {subiendoFoto
+          ? "Subiendo foto..."
+          : estado.tipo === "guardando"
+            ? "Guardando..."
+            : "Registrar egreso"}
       </button>
 
       {estado.tipo === "error" && (
