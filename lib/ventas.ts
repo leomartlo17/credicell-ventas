@@ -21,6 +21,51 @@ import { buscarPorImei } from "@/lib/inventario";
 export const HOJA_VENTAS = "Ventas 2026";
 
 /**
+ * Porcentajes de cuota inicial estándar que ofrecen las financieras.
+ * Leonardo: la financiera oficialmente fija uno de estos, pero en práctica
+ * a veces se le hace descuento al cliente y se recibe menos.
+ */
+export const PORCENTAJES_INICIAL = [20, 25, 30, 35, 40, 45, 50] as const;
+
+/**
+ * Por ahora solo KREDIYA y PAYJOY generan hoja propia con conciliación
+ * semanal. Las demás financieras (ADELANTOS, +KUPO, BOGOTA, ADDI, SU+PAY,
+ * RENTING, ALCANOS) se agregarán cuando Leonardo defina cómo funciona
+ * cada una — hasta entonces sus ventas solo van a Ventas 2026.
+ */
+const FINANCIERAS_CON_HOJA_PROPIA = ["KREDIYA", "PAYJOY"];
+
+/**
+ * Headers de las hojas de conciliación por financiera (KREDIYA, PAYJOY).
+ * VALOR FINANCIADO = VALOR VENTA − VALOR % = lo que la financiera le va
+ * pagando a Leonardo semanalmente en cuotas.
+ */
+const HEADERS_FINANCIERA = [
+  "FECHA",
+  "ASESOR",
+  "CEDULA",
+  "CLIENTE",
+  "MARCA",
+  "EQUIPO",
+  "COLOR",
+  "IMEI",
+  "VALOR VENTA",
+  "% INICIAL",
+  "VALOR %",
+  "VALOR FINANCIADO",
+  "VALOR RECIBIDO",
+  "DESCUENTO",
+  "EFECTIVO",
+  "CAJA",
+  "TRANSFERENCIA",
+  "NEQUI",
+  "DATAFONO",
+  "WOMPI",
+  "OTRO",
+  "OBSERVACIONES",
+];
+
+/**
  * Medios de pago soportados. Cada venta puede tener un monto en cualquier
  * combinación de ellos. La suma debe cuadrar con lo abonado (el valor total
  * en Contado, o la cuota inicial cuando hay financiera).
@@ -90,6 +135,37 @@ async function asegurarHojaVentas(libroId: string): Promise<string> {
   await crearHoja(libroId, HOJA_VENTAS);
   await escribirRango(libroId, `'${HOJA_VENTAS}'!A1`, [HEADERS_VENTAS]);
   return HOJA_VENTAS;
+}
+
+/**
+ * Genera el nombre de la hoja de conciliación de una financiera, SOLO
+ * si es una financiera con estructura semanal ya definida (KREDIYA,
+ * PAYJOY). Para las demás, null → la venta solo queda en Ventas 2026
+ * hasta que Leonardo defina cómo conciliar cada una.
+ */
+function nombreHojaFinanciera(financiera: string): string | null {
+  const f = (financiera || "").trim().toUpperCase();
+  if (!f) return null;
+  if (!FINANCIERAS_CON_HOJA_PROPIA.includes(f)) return null;
+  return `${f} 2026`;
+}
+
+/**
+ * Si la venta es por KREDIYA o PAYJOY, asegura que exista la hoja de
+ * conciliación con los headers correctos. Retorna el nombre de la hoja
+ * o null si la financiera no tiene estructura definida todavía.
+ */
+async function asegurarHojaFinanciera(
+  libroId: string,
+  financiera: string
+): Promise<string | null> {
+  const nombre = nombreHojaFinanciera(financiera);
+  if (!nombre) return null;
+  const hojas = await listarHojas(libroId);
+  if (hojas.includes(nombre)) return nombre;
+  await crearHoja(libroId, nombre);
+  await escribirRango(libroId, `'${nombre}'!A1`, [HEADERS_FINANCIERA]);
+  return nombre;
 }
 
 /**
@@ -164,7 +240,7 @@ export async function guardarVenta(
   // 1) Marcar vendido en inventario
   await marcarVendidoEnInventario(libroId, hojaInv, venta.filaInventario, fechaHoy);
 
-  // Total abonado (suma de todos los medios de pago)
+  // Total abonado (suma de todos los medios de pago) = lo que entró en caja hoy
   const totalAbonado =
     (venta.efectivo || 0) +
     (venta.caja || 0) +
@@ -174,9 +250,17 @@ export async function guardarVenta(
     (venta.wompi || 0) +
     (venta.otro || 0);
 
-  // 2) Asegurar hoja de Ventas + escribir fila
+  // Cálculos específicos para financiera (si aplica)
+  const pct = venta.porcentajeCuota || 0;
+  const valorPctOficial = pct > 0 ? Math.round((venta.valorTotal * pct) / 100) : 0;
+  const descuento = valorPctOficial > 0 ? valorPctOficial - totalAbonado : 0;
+  // VALOR FINANCIADO = lo que la financiera le paga a Leonardo en cuotas
+  // = valor venta menos el % inicial oficial
+  const valorFinanciado = pct > 0 ? venta.valorTotal - valorPctOficial : 0;
+
+  // 2) Asegurar hoja de Ventas + escribir fila general (todas las ventas)
   const hojaVen = await asegurarHojaVentas(libroId);
-  const fila = [
+  const filaVentas = [
     fechaHoy,
     venta.asesor,
     venta.cedula,
@@ -199,6 +283,39 @@ export async function guardarVenta(
     totalAbonado,
     venta.observaciones || "",
   ];
-  const { filaEscrita } = await agregarFila(libroId, hojaVen, fila);
+  const { filaEscrita } = await agregarFila(libroId, hojaVen, filaVentas);
+
+  // 3) Escribir en hoja de la financiera (solo si NO es Contado).
+  //    Esta es la hoja de conciliación para que Leonardo cuadre con cada
+  //    financiera lo que les debe pagar semanal/mensual.
+  const hojaFin = await asegurarHojaFinanciera(libroId, venta.financiera);
+  if (hojaFin) {
+    const filaFinanciera = [
+      fechaHoy,
+      venta.asesor,
+      venta.cedula,
+      venta.clienteNombre,
+      venta.marca,
+      venta.equipo,
+      venta.color || "",
+      venta.imei,
+      venta.valorTotal,
+      venta.porcentajeCuota ?? "",
+      valorPctOficial || "",
+      valorFinanciado || "",       // VALOR FINANCIADO (lo que pagará la financiera)
+      totalAbonado,                // VALOR RECIBIDO
+      descuento,                   // DESCUENTO
+      venta.efectivo ?? "",
+      venta.caja ?? "",
+      venta.transferencia ?? "",
+      venta.nequi ?? "",
+      venta.datafono ?? "",
+      venta.wompi ?? "",
+      venta.otro ?? "",
+      venta.observaciones || "",
+    ];
+    await agregarFila(libroId, hojaFin, filaFinanciera);
+  }
+
   return { ok: true, filaVenta: filaEscrita };
 }

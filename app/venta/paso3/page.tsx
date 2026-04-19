@@ -150,6 +150,12 @@ function Paso3Pago() {
     (Number(form.otro) || 0);
   const restante = valorTotalNum - pagadoNum;
   const esContado = form.financiera.toUpperCase() === "CONTADO";
+  // % oficial de la financiera (20/25/30/35/40/45/50)
+  const pctNum = Number(form.porcentajeCuota) || 0;
+  // Valor % oficial que la financiera esperaría recibir de inicial
+  const valorPctOficial = pctNum > 0 ? Math.round((valorTotalNum * pctNum) / 100) : 0;
+  // Descuento = lo que NO se cobró al cliente respecto al % oficial
+  const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - pagadoNum : 0;
 
   async function confirmar() {
     if (!form.financiera) {
@@ -333,19 +339,50 @@ function Paso3Pago() {
           placeholder="1500000"
         />
 
-        {!esContado && (
-          <div className="grid grid-cols-2 gap-3">
+        {!esContado && form.financiera && (
+          <div className="bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3 space-y-3">
+            <div className="text-xs text-muted font-medium">
+              Datos de la financiera ({form.financiera})
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-1">
+                % inicial (la que quedó con la financiera)
+              </label>
+              <select
+                value={form.porcentajeCuota}
+                onChange={(e) => actualizar("porcentajeCuota", e.target.value)}
+                className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+              >
+                <option value="">-- Seleccionar --</option>
+                {[20, 25, 30, 35, 40, 45, 50].map((p) => (
+                  <option key={p} value={p}>
+                    {p}%
+                  </option>
+                ))}
+              </select>
+            </div>
+            {pctNum > 0 && valorTotalNum > 0 && (
+              <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2">
+                <div className="flex justify-between">
+                  <span className="text-muted">
+                    Valor {pctNum}% oficial:
+                  </span>
+                  <span className="text-white font-mono">
+                    ${valorPctOficial.toLocaleString("es-CO")}
+                  </span>
+                </div>
+                <div className="text-[10px] text-muted mt-1">
+                  Esto es lo que oficialmente la financiera espera que cobres al
+                  cliente de inicial. Abajo abajo ingresa los medios de pago que
+                  realmente recibiste.
+                </div>
+              </div>
+            )}
             <Numero
-              label="% cuota"
-              value={form.porcentajeCuota}
-              onChange={(v) => actualizar("porcentajeCuota", v)}
-              placeholder="25"
-            />
-            <Numero
-              label="Valor cuota"
+              label="Valor cuota mensual (opcional)"
               value={form.valorCuota}
               onChange={(v) => actualizar("valorCuota", v)}
-              placeholder="375000"
+              placeholder="ej: 120000"
             />
           </div>
         )}
@@ -395,22 +432,54 @@ function Paso3Pago() {
             />
           </div>
 
-          {valorTotalNum > 0 && pagadoNum > 0 && (
-            <div className="mt-3 p-3 bg-[#0b0d12] border border-[#2a2f3b] rounded text-xs">
+          {valorTotalNum > 0 && (pagadoNum > 0 || pctNum > 0) && (
+            <div className="mt-3 p-3 bg-[#0b0d12] border border-[#2a2f3b] rounded text-xs space-y-1">
               <div className="flex justify-between text-muted">
-                <span>Total venta:</span>
-                <span className="text-white">${valorTotalNum.toLocaleString("es-CO")}</span>
+                <span>Valor venta (lo del admin):</span>
+                <span className="text-white font-mono">${valorTotalNum.toLocaleString("es-CO")}</span>
               </div>
-              <div className="flex justify-between text-muted mt-1">
-                <span>Pagado / asentado:</span>
-                <span className="text-white">${pagadoNum.toLocaleString("es-CO")}</span>
+
+              {!esContado && pctNum > 0 && (
+                <div className="flex justify-between text-muted">
+                  <span>Valor {pctNum}% oficial financiera:</span>
+                  <span className="text-white font-mono">${valorPctOficial.toLocaleString("es-CO")}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-muted">
+                <span>Recibido (suma medios pago):</span>
+                <span className="text-white font-mono">${pagadoNum.toLocaleString("es-CO")}</span>
               </div>
-              <div className="flex justify-between font-medium mt-1">
-                <span>Restante:</span>
-                <span className={restante === 0 ? "text-green-400" : restante > 0 ? "text-yellow-400" : "text-red-400"}>
-                  ${restante.toLocaleString("es-CO")}
-                </span>
-              </div>
+
+              {esContado ? (
+                <div className="flex justify-between font-medium pt-1 border-t border-[#2a2f3b]">
+                  <span>Restante:</span>
+                  <span className={restante === 0 ? "text-green-400" : restante > 0 ? "text-yellow-400" : "text-red-400"}>
+                    ${restante.toLocaleString("es-CO")}
+                  </span>
+                </div>
+              ) : pctNum > 0 ? (
+                <div className="flex justify-between font-medium pt-1 border-t border-[#2a2f3b]">
+                  <span>
+                    {descuentoFinanciera > 0
+                      ? "Descuento al cliente:"
+                      : descuentoFinanciera < 0
+                        ? "Pagó más del %:"
+                        : "Pagó exacto el %:"}
+                  </span>
+                  <span
+                    className={
+                      descuentoFinanciera === 0
+                        ? "text-green-400"
+                        : descuentoFinanciera > 0
+                          ? "text-yellow-400"
+                          : "text-blue-400"
+                    }
+                  >
+                    ${Math.abs(descuentoFinanciera).toLocaleString("es-CO")}
+                  </span>
+                </div>
+              ) : null}
             </div>
           )}
         </div>

@@ -31,6 +31,7 @@ export const SEDES: Sede[] = [
     ],
     financieras: [
       "KREDIYA",
+      "PAYJOY",
       "ADELANTOS",
       "+KUPO",
       "BOGOTA",
