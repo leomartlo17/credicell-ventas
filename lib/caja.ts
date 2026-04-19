@@ -51,11 +51,12 @@ const HEADERS_CAJA = [
 ];
 
 /**
- * Umbrales de reglas para egresos. Cambiar aquí cambia la validación en
- * toda la app (front+back). Montos en pesos colombianos.
+ * Reglas de egresos. Regla Leonardo: autorización SIEMPRE obligatoria,
+ * desde $1 peso en adelante — todo egreso debe tener quién lo autorizó.
+ * Factura obligatoria arriba del umbral. Nunca se puede sacar más de
+ * lo que hay físicamente en caja (no hay negativos).
  */
 export const UMBRAL_FACTURA = 20_000; // > de este → URL factura obligatoria
-export const UMBRAL_AUTORIZACION = 100_000; // > de este → AUTORIZADO POR obligatorio
 
 export type TipoMovimiento = "INGRESO" | "EGRESO" | "ANULACION";
 
@@ -118,23 +119,30 @@ export async function registrarMovimiento(
 ): Promise<{ filaEscrita: number; saldoDespues: number }> {
   const hoja = await asegurarHojaCaja(libroId);
 
+  // Calcular saldo actual (se reusa para validar y para SALDO DESPUES)
+  const saldoAntes = await saldoActual(libroId);
+
   // Validaciones de egresos con reglas estrictas
   if (mov.tipo === "EGRESO") {
+    if (!mov.autorizadoPor?.trim()) {
+      throw new Error(
+        `Autorización obligatoria para cualquier egreso. Registra quién ` +
+          `autorizó (J.A, J.D, u otro).`
+      );
+    }
     if (mov.monto > UMBRAL_FACTURA && !mov.urlFactura?.trim()) {
       throw new Error(
         `Foto de factura obligatoria para egresos > $${UMBRAL_FACTURA.toLocaleString("es-CO")}`
       );
     }
-    if (mov.monto > UMBRAL_AUTORIZACION && !mov.autorizadoPor?.trim()) {
+    if (mov.monto > saldoAntes) {
       throw new Error(
-        `Autorización obligatoria para egresos > $${UMBRAL_AUTORIZACION.toLocaleString("es-CO")}. ` +
-          `Registra quién autorizó (J.A, J.D, u otro).`
+        `No se puede sacar $${mov.monto.toLocaleString("es-CO")} — ` +
+          `solo hay $${saldoAntes.toLocaleString("es-CO")} en caja. ` +
+          `La caja no puede quedar en negativo.`
       );
     }
   }
-
-  // Calcular saldo actual para poner en columna SALDO DESPUES
-  const saldoAntes = await saldoActual(libroId);
   let delta = 0;
   if (mov.tipo === "INGRESO") {
     delta = mov.monto;

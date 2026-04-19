@@ -8,7 +8,11 @@ import { Suspense, useEffect, useState } from "react";
 
 const NUEVO = "__NUEVO__";
 const UMBRAL_FACTURA = 20_000;
-const UMBRAL_AUTORIZACION = 100_000;
+// Autorización: SIEMPRE obligatoria, desde $1 peso. Regla Leonardo:
+// cada peso que sale de caja tiene que estar registrado con quién
+// autorizó. Nada sale anónimo.
+// Saldo: egresos no pueden exceder el saldo actual — la caja no queda
+// en negativo nunca.
 
 export default function EgresoWrapper() {
   return (
@@ -102,11 +106,11 @@ function RegistrarEgreso() {
 
   // Reglas de validación visibles
   const requiereFactura = montoNum > UMBRAL_FACTURA;
-  const requiereAutorizacion = montoNum > UMBRAL_AUTORIZACION;
+  const requiereAutorizacion = true; // siempre
   const faltaFactura =
     requiereFactura && !form.urlFactura.trim() && !archivo;
-  const faltaAutorizacion =
-    requiereAutorizacion && !form.autorizadoPor.trim();
+  const faltaAutorizacion = !form.autorizadoPor.trim();
+  const excedeSaldo = saldo !== null && montoNum > saldo;
 
   async function subirFotoSiHay(): Promise<string | null> {
     if (!archivo) return null;
@@ -138,17 +142,24 @@ function RegistrarEgreso() {
       setEstado({ tipo: "error", mensaje: "Monto inválido" });
       return;
     }
-    if (faltaFactura) {
+    if (excedeSaldo) {
       setEstado({
         tipo: "error",
-        mensaje: `Foto de factura obligatoria para egresos > $${UMBRAL_FACTURA.toLocaleString("es-CO")}`,
+        mensaje: `No hay saldo suficiente. Solo hay $${(saldo || 0).toLocaleString("es-CO")} en caja.`,
       });
       return;
     }
     if (faltaAutorizacion) {
       setEstado({
         tipo: "error",
-        mensaje: `Autorización obligatoria para egresos > $${UMBRAL_AUTORIZACION.toLocaleString("es-CO")}`,
+        mensaje: `Registra quién autorizó este egreso. Es obligatorio siempre.`,
+      });
+      return;
+    }
+    if (faltaFactura) {
+      setEstado({
+        tipo: "error",
+        mensaje: `Foto de factura obligatoria para egresos > $${UMBRAL_FACTURA.toLocaleString("es-CO")}`,
       });
       return;
     }
@@ -239,8 +250,9 @@ function RegistrarEgreso() {
 
       <h1 className="text-2xl font-bold mb-1">Registrar egreso</h1>
       <p className="text-muted text-sm mb-6">
-        Sale plata de la caja de la tienda. Reglas:
-        factura obligatoria &gt; {fmt(UMBRAL_FACTURA)}, autorización obligatoria &gt; {fmt(UMBRAL_AUTORIZACION)}.
+        Sale plata de la caja de la tienda. Reglas firmes:
+        autorización obligatoria en cada egreso (desde $1), factura obligatoria &gt; {fmt(UMBRAL_FACTURA)},
+        nunca se puede sacar más de lo que hay en caja.
       </p>
 
       <div className="space-y-3">
@@ -310,31 +322,40 @@ function RegistrarEgreso() {
               actualizar("monto", e.target.value.replace(/[^\d]/g, ""))
             }
             placeholder="50000"
-            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
+            className={`w-full px-3 py-2 bg-[#0b0d12] border rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none text-sm ${
+              excedeSaldo
+                ? "border-red-700 focus:border-red-500"
+                : "border-[#2a2f3b] focus:border-brand"
+            }`}
           />
-          {montoNum > 0 && (
+          {excedeSaldo && (
+            <div className="mt-1 text-[11px] text-red-400">
+              ⛔ Excede el saldo disponible ({fmt(saldo || 0)})
+            </div>
+          )}
+          {montoNum > 0 && !excedeSaldo && (
             <div className="mt-1 text-[11px] text-muted">
+              <span className={faltaAutorizacion ? "text-yellow-400" : "text-green-400"}>
+                {faltaAutorizacion ? "⚠ " : "✓ "}
+                Autorización obligatoria
+              </span>
               {requiereFactura && (
-                <span className={faltaFactura ? "text-yellow-400" : "text-green-400"}>
-                  {faltaFactura ? "⚠ " : "✓ "}
-                  Requiere factura
-                </span>
-              )}
-              {requiereFactura && requiereAutorizacion && " · "}
-              {requiereAutorizacion && (
-                <span className={faltaAutorizacion ? "text-yellow-400" : "text-green-400"}>
-                  {faltaAutorizacion ? "⚠ " : "✓ "}
-                  Requiere autorización
-                </span>
+                <>
+                  {" · "}
+                  <span className={faltaFactura ? "text-yellow-400" : "text-green-400"}>
+                    {faltaFactura ? "⚠ " : "✓ "}
+                    Requiere factura
+                  </span>
+                </>
               )}
             </div>
           )}
         </div>
 
-        {/* Autorizado por — visible siempre, destacado si obligatorio */}
+        {/* Autorizado por — siempre obligatorio */}
         <div>
           <label className="block text-xs text-muted mb-1">
-            Autorizado por {requiereAutorizacion && <span className="text-yellow-400">*</span>}
+            Autorizado por <span className="text-yellow-400">*</span>
           </label>
           <input
             type="text"
@@ -442,8 +463,15 @@ function RegistrarEgreso() {
 
       <button
         onClick={guardar}
-        disabled={estado.tipo === "guardando" || subiendoFoto}
-        className="w-full mt-6 py-3 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg"
+        disabled={
+          estado.tipo === "guardando" ||
+          subiendoFoto ||
+          excedeSaldo ||
+          !montoNum ||
+          faltaAutorizacion ||
+          faltaFactura
+        }
+        className="w-full mt-6 py-3 bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-[#0b0d12] font-bold rounded-lg"
       >
         {subiendoFoto
           ? "Subiendo foto..."
