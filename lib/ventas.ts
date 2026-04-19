@@ -52,9 +52,9 @@ const HEADERS_FINANCIERA = [
   "VALOR VENTA",
   "% INICIAL",
   "VALOR %",
-  "VALOR FINANCIADO",
   "VALOR RECIBIDO",
   "DESCUENTO",
+  "VALOR FINANCIADO",
   "EFECTIVO",
   "CAJA",
   "TRANSFERENCIA",
@@ -314,9 +314,9 @@ export async function guardarVenta(
       venta.valorTotal,
       venta.porcentajeCuota ?? "",
       valorPctOficial || "",
-      valorFinanciado || "",       // VALOR FINANCIADO (lo que pagará la financiera)
       valorRecibir,                // VALOR RECIBIDO (inicial real, la del asesor)
       descuento,                   // DESCUENTO (valor oficial − valor recibido)
+      valorFinanciado || "",       // VALOR FINANCIADO (lo que pagará la financiera)
       venta.efectivo ?? "",
       venta.caja ?? "",
       venta.transferencia ?? "",
