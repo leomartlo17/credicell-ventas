@@ -257,18 +257,27 @@ function filaAProducto(
 }
 
 function estaDisponible(fila: any[], cols: ColMapInventario): boolean {
-  // Regla de Leonardo: columna ESTADO (I) vacía = DISPONIBLE, con CUALQUIER
-  // cosa = VENDIDO. No evaluamos el contenido — si hay algo escrito ahí,
-  // significa que ya no se puede vender (puede ser una fecha, un nombre,
-  // "VENDIDO", "X", etc.). La ausencia de texto es la señal de disponibilidad.
+  // Regla de Leonardo: columna ESTADO indica si un equipo está vendido.
+  //   - Vacía → DISPONIBLE
+  //   - Texto "DISPONIBLE" (variantes) → DISPONIBLE (retrocompat con
+  //     productos creados antes del fix que escribían esa palabra)
+  //   - Cualquier otro contenido (fecha, nombre, "VENDIDO", "X", etc.)
+  //     → VENDIDO
   if (cols.estado >= 0) {
     const est = fila[cols.estado];
-    if (est !== undefined && est !== null && String(est).trim() !== "") {
-      return false;
+    if (est !== undefined && est !== null) {
+      const s = String(est).trim();
+      if (s !== "") {
+        const n = normalizar(s);
+        const esMarcadoComoDisponible =
+          n === "DISPONIBLE" || n === "AVAILABLE" || n === "OK";
+        if (!esMarcadoComoDisponible) {
+          return false;
+        }
+      }
     }
   }
-  // Respaldo: si por algún motivo no tenemos columna ESTADO, usamos
-  // FECHA VENTA como indicador alternativo.
+  // Respaldo: si FECHA VENTA tiene algo, también lo tratamos como vendido.
   if (cols.fechaVenta >= 0) {
     const fv = fila[cols.fechaVenta];
     if (fv !== undefined && fv !== null && String(fv).trim() !== "") {
@@ -428,8 +437,14 @@ export async function crearProducto(
     }
   }
 
-  // Construir la fila respetando el orden real de columnas
+  // Construir la fila respetando el orden real de columnas.
+  //
+  // IMPORTANTE: la columna ESTADO se deja VACÍA al crear el producto.
+  // Regla de Leonardo: ESTADO vacío = disponible, ESTADO con cualquier cosa
+  // = vendido. Si escribiera "DISPONIBLE" aquí, mi propio filtro lo tomaría
+  // como vendido y nunca aparecería en Paso 2.
   const fila: any[] = new Array(headers.length).fill("");
+  // Fecha ingreso en formato ISO YYYY-MM-DD, Sheets lo formatea al locale
   const hoy = datos.fechaIngreso || new Date().toISOString().slice(0, 10);
   if (cols.fechaIngreso >= 0) fila[cols.fechaIngreso] = hoy;
   if (cols.marca >= 0) fila[cols.marca] = datos.marca.trim();
@@ -441,7 +456,7 @@ export async function crearProducto(
     fila[cols.precioCosto] = datos.precioCosto;
   if (cols.proveedor >= 0 && datos.proveedor)
     fila[cols.proveedor] = datos.proveedor.trim();
-  if (cols.estado >= 0) fila[cols.estado] = "DISPONIBLE";
+  // fila[cols.estado] se queda en "" — vacía = disponible
 
   return agregarFila(libroId, hoja, fila);
 }
