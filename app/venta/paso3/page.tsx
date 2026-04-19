@@ -249,7 +249,9 @@ function Paso3Pago() {
 
   // +Kupo con iPhone: flujo especial con % de inicial
   const esKupoIphone =
-    form.financiera === "+KUPO" && producto?.tipoEquipo === "iPhone";
+    form.financiera === "+KUPO" && producto?.tipoEquipo?.toLowerCase() === "iphone";
+  const esKupoAndroid =
+    form.financiera === "+KUPO" && producto?.tipoEquipo?.toLowerCase() !== "iphone";
   const precioKupo = valorTotalNum || producto?.precioCosto || 0;
   const minPctKupo = precioKupo <= 3_000_000
     ? 20
@@ -522,6 +524,59 @@ function Paso3Pago() {
             <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted">Credicell recibe (inicial):</span>
+                <span className="font-bold text-white">${inicialKupo.toLocaleString("es-CO")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">+Kupo financia:</span>
+                <span className={`font-bold ${financiadoKupo > 3_000_000 ? "text-red-400" : "text-white"}`}>
+                  ${financiadoKupo.toLocaleString("es-CO")}
+                </span>
+              </div>
+              {financiadoKupo > 3_000_000 ? (
+                <p className="text-red-400 text-xs">
+                  +Kupo financia máximo $3.000.000. Sube el porcentaje.
+                </p>
+              ) : (
+                <p className="text-green-400 text-xs">Financiación válida</p>
+              )}
+            </div>
+            <p className="text-xs text-muted">
+              Agrega medios de pago abajo que sumen el inicial (${inicialKupo.toLocaleString("es-CO")}).
+            </p>
+          </div>
+        )}
+
+
+        {/* +KUPO Android/Otro */}
+        {esKupoAndroid && valorTotalNum > 0 && (
+          <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
+            <div className="text-xs text-brand font-bold uppercase tracking-wider">
+              +Kupo · Android / Otro
+            </div>
+            <div>
+              <div className="flex justify-between items-baseline mb-1">
+                <label className="text-xs text-muted">
+                  % de cuota inicial
+                </label>
+                <span className="text-brand font-bold">{pctKupoNum}%</span>
+              </div>
+              <input
+                type="range"
+                min={20}
+                max={80}
+                step={1}
+                value={pctKupoNum}
+                onChange={(e) => actualizar("porcentajeKupo", e.target.value)}
+                className="w-full accent-brand"
+              />
+              <div className="flex justify-between text-xs text-muted mt-1">
+                <span>20%</span>
+                <span>80%</span>
+              </div>
+            </div>
+            <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted">Cuota inicial ({pctKupoNum}%):</span>
                 <span className="font-bold text-white">${inicialKupo.toLocaleString("es-CO")}</span>
               </div>
               <div className="flex justify-between">
