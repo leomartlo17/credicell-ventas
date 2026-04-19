@@ -67,8 +67,20 @@ function Paso3Pago() {
   const [medios, setMedios] = useState<MedioCatalogo[]>([]);
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
 
-  // montos de pago dinámicos: clave = nombre del medio (normalizado)
-  const [pagos, setPagos] = useState<Record<string, string>>({});
+  // Medios seleccionados en esta venta. Orden importa (como los agregó
+  // el asesor). Cada uno tiene su monto. Si el asesor quita un medio,
+  // desaparece del arreglo.
+  const [seleccionados, setSeleccionados] = useState<
+    { medio: string; valor: string }[]
+  >([]);
+  // Control UI: mostrar u ocultar el selector de "agregar medio"
+  const [mostrarSelector, setMostrarSelector] = useState(false);
+  // Crear medio nuevo inline (solo admin)
+  const [creandoNuevo, setCreandoNuevo] = useState(false);
+  const [nuevoMedioNombre, setNuevoMedioNombre] = useState("");
+  const [guardandoNuevo, setGuardandoNuevo] = useState(false);
+  const [errorNuevo, setErrorNuevo] = useState("");
+
   const [form, setForm] = useState({
     financiera: "",
     valorTotal: "",
@@ -76,6 +88,8 @@ function Paso3Pago() {
     valorRecibir: "",
     observaciones: "",
   });
+
+  const esAdmin = Boolean((session as any)?.esAdmin);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -159,15 +173,67 @@ function Paso3Pago() {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
-  function setPago(medio: string, valor: string) {
-    setPagos((p) => ({ ...p, [medio]: valor.replace(/[^\d.]/g, "") }));
+  function agregarMedio(medio: string) {
+    setSeleccionados((s) => {
+      if (s.some((x) => x.medio === medio)) return s; // ya está
+      return [...s, { medio, valor: "" }];
+    });
+    setMostrarSelector(false);
+  }
+
+  function quitarMedio(medio: string) {
+    setSeleccionados((s) => s.filter((x) => x.medio !== medio));
+  }
+
+  function setValorMedio(medio: string, valor: string) {
+    const limpio = valor.replace(/[^\d.]/g, "");
+    setSeleccionados((s) =>
+      s.map((x) => (x.medio === medio ? { ...x, valor: limpio } : x))
+    );
+  }
+
+  async function crearNuevoMedio() {
+    const nombre = nuevoMedioNombre.trim();
+    if (nombre.length < 2) {
+      setErrorNuevo("Mínimo 2 caracteres");
+      return;
+    }
+    setGuardandoNuevo(true);
+    setErrorNuevo("");
+    try {
+      const r = await fetch("/api/medios-pago", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre }),
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        setErrorNuevo(d.error || "Error al crear");
+        return;
+      }
+      // El medio se agregó al catálogo — meterlo en la lista local y
+      // seleccionarlo para esta venta inmediatamente.
+      const nuevo: MedioCatalogo = {
+        nombre: d.medio.nombre,
+        activo: true,
+        esCore: false,
+      };
+      setMedios((prev) => [...prev, nuevo]);
+      agregarMedio(d.medio.nombre);
+      setCreandoNuevo(false);
+      setNuevoMedioNombre("");
+    } catch (e: any) {
+      setErrorNuevo(e?.message || "Error de red");
+    } finally {
+      setGuardandoNuevo(false);
+    }
   }
 
   // Cálculos derivados
   const valorTotalNum = Number(form.valorTotal) || 0;
   const pagadoNum = useMemo(() => {
-    return Object.values(pagos).reduce((sum, v) => sum + (Number(v) || 0), 0);
-  }, [pagos]);
+    return seleccionados.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
+  }, [seleccionados]);
   const restante = valorTotalNum - pagadoNum;
   const esContado = form.financiera.toUpperCase() === "CONTADO";
   const pctNum = Number(form.porcentajeCuota) || 0;
@@ -222,10 +288,18 @@ function Paso3Pago() {
       }
     }
 
-    // Convertir pagos del state {medio: stringValor} a {medio, valor} con montos > 0
-    const pagosArray = Object.entries(pagos)
-      .map(([medio, v]) => ({ medio, valor: Number(v) || 0 }))
+    // Convertir selección del asesor a pagos numéricos > 0
+    const pagosArray = seleccionados
+      .map((s) => ({ medio: s.medio, valor: Number(s.valor) || 0 }))
       .filter((p) => p.valor > 0);
+    if (pagosArray.length === 0) {
+      setEstado({
+        tipo: "error",
+        mensaje:
+          "Agrega al menos un medio de pago con valor. Usa '+ Agregar medio'.",
+      });
+      return;
+    }
 
     setEstado({ tipo: "guardando" });
     try {
@@ -464,23 +538,155 @@ function Paso3Pago() {
                 ? " — debe sumar el valor a recibir (cuota inicial real)"
                 : " — lo que pagó el cliente hoy"}
           </p>
-          {/* Render dinámico desde el catálogo MEDIOS_PAGO.
-              Excluimos "OTRO" del formulario — si hace falta un medio
-              que no aparece aquí, el admin debe agregarlo al catálogo
-              en /admin/medios-pago. Esto evita el agujero de control
-              del viejo campo Otro. */}
-          <div className="grid grid-cols-2 gap-3">
-            {medios
-              .filter((m) => m.activo && m.nombre !== "OTRO" && m.nombre !== "CAJA")
-              .map((m) => (
-                <Numero
-                  key={m.nombre}
-                  label={formatearNombreMedio(m.nombre)}
-                  value={pagos[m.nombre] || ""}
-                  onChange={(v) => setPago(m.nombre, v)}
+          {/* UX: el asesor CONSTRUYE el desglose agregando medios uno
+              por uno. Evita el ruido visual de mostrar todos los medios
+              cuando típicamente solo se usa 1-2. Admins pueden crear
+              medios nuevos inline sin salir del Paso 3.
+              CAJA queda excluido del selector — es un saldo físico de la
+              sede, no un medio de pago que el cliente use. */}
+          {seleccionados.length === 0 && !mostrarSelector && (
+            <p className="text-xs text-muted italic mb-3">
+              Aún no has agregado medios. Presiona "+ Agregar medio" para empezar.
+            </p>
+          )}
+
+          <div className="space-y-2 mb-3">
+            {seleccionados.map((s) => (
+              <div
+                key={s.medio}
+                className="flex items-center gap-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-2"
+              >
+                <div className="w-24 text-xs text-muted shrink-0 pl-1">
+                  {formatearNombreMedio(s.medio)}
+                </div>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  autoFocus
+                  value={s.valor}
+                  onChange={(e) => setValorMedio(s.medio, e.target.value)}
+                  placeholder="0"
+                  className="flex-1 px-2 py-1.5 bg-[#141821] border border-[#2a2f3b] rounded text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
                 />
-              ))}
+                <button
+                  type="button"
+                  onClick={() => quitarMedio(s.medio)}
+                  aria-label={`Quitar ${s.medio}`}
+                  className="w-7 h-7 text-muted hover:text-red-400 text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
           </div>
+
+          {!mostrarSelector && (
+            <button
+              type="button"
+              onClick={() => {
+                setMostrarSelector(true);
+                setCreandoNuevo(false);
+              }}
+              className="w-full py-2 px-3 bg-[#141821] hover:bg-[#1e242f] border border-dashed border-[#2a2f3b] text-muted hover:text-white rounded-lg text-sm"
+            >
+              + Agregar medio
+            </button>
+          )}
+
+          {mostrarSelector && (
+            <div className="bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-muted font-medium">Elige un medio</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarSelector(false);
+                    setCreandoNuevo(false);
+                    setErrorNuevo("");
+                  }}
+                  className="text-xs text-muted hover:text-white"
+                >
+                  cancelar
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {medios
+                  .filter(
+                    (m) =>
+                      m.activo &&
+                      m.nombre !== "CAJA" &&
+                      !seleccionados.some((s) => s.medio === m.nombre)
+                  )
+                  .map((m) => (
+                    <button
+                      key={m.nombre}
+                      type="button"
+                      onClick={() => agregarMedio(m.nombre)}
+                      className="py-2 px-3 bg-[#141821] hover:bg-brand hover:text-[#0b0d12] border border-[#2a2f3b] text-white rounded text-sm text-left"
+                    >
+                      {formatearNombreMedio(m.nombre)}
+                    </button>
+                  ))}
+              </div>
+
+              {/* Admin puede crear un medio nuevo sin salir del Paso 3.
+                  Se agrega al catálogo y se selecciona automáticamente
+                  para esta venta. */}
+              {esAdmin && !creandoNuevo && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreandoNuevo(true);
+                    setErrorNuevo("");
+                  }}
+                  className="w-full mt-3 py-2 px-3 bg-[#141821] hover:bg-[#1e242f] border border-dashed border-brand text-brand hover:text-brand-light rounded text-sm"
+                >
+                  + Crear medio nuevo
+                </button>
+              )}
+
+              {esAdmin && creandoNuevo && (
+                <div className="mt-3 pt-3 border-t border-[#2a2f3b] space-y-2">
+                  <p className="text-xs text-muted">
+                    Nuevo medio (quedará en el catálogo y disponible para
+                    todas las ventas)
+                  </p>
+                  <input
+                    type="text"
+                    value={nuevoMedioNombre}
+                    onChange={(e) => setNuevoMedioNombre(e.target.value)}
+                    placeholder="Ej: DAVIPLATA"
+                    className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm uppercase"
+                  />
+                  {errorNuevo && (
+                    <p className="text-xs text-red-400">{errorNuevo}</p>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={crearNuevoMedio}
+                      disabled={guardandoNuevo || !nuevoMedioNombre.trim()}
+                      className="flex-1 py-2 px-3 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded text-sm"
+                    >
+                      {guardandoNuevo ? "Guardando..." : "Guardar y usar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreandoNuevo(false);
+                        setNuevoMedioNombre("");
+                        setErrorNuevo("");
+                      }}
+                      className="px-3 py-2 bg-[#141821] border border-[#2a2f3b] text-muted hover:text-white rounded text-sm"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {valorTotalNum > 0 && (
             <div className="mt-3 p-3 bg-[#0b0d12] border border-[#2a2f3b] rounded text-xs space-y-1">
