@@ -20,16 +20,57 @@ export default function Paso3Wrapper() {
   );
 }
 
+type Producto = {
+  marca: string;
+  equipo: string;
+  color: string;
+  imei: string;
+  fila: number;
+};
+
+type Cliente = {
+  cedula: string;
+  nombre: string;
+  telefono?: string;
+};
+
+type SedeInfo = {
+  id: string;
+  nombre: string;
+  financieras: string[];
+};
+
+type Estado =
+  | { tipo: "cargando" }
+  | { tipo: "listo" }
+  | { tipo: "guardando" }
+  | { tipo: "ok"; filaVenta: number }
+  | { tipo: "error"; mensaje: string };
+
 function Paso3Pago() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const cedula = searchParams.get("cedula") || "";
   const imei = searchParams.get("imei") || "";
+  const filaInv = parseInt(searchParams.get("fila") || "0", 10);
 
-  const [producto, setProducto] = useState<any>(null);
-  const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState("");
+  const [producto, setProducto] = useState<Producto | null>(null);
+  const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [sedeInfo, setSedeInfo] = useState<SedeInfo | null>(null);
+  const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
+
+  const [form, setForm] = useState({
+    financiera: "",
+    valorTotal: "",
+    porcentajeCuota: "",
+    valorCuota: "",
+    caja: "",
+    efectivo: "",
+    transferencia: "",
+    otroMedio: "",
+    observaciones: "",
+  });
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -38,39 +79,193 @@ function Paso3Pago() {
   useEffect(() => {
     if (status !== "authenticated") return;
     if (!cedula || !imei) {
-      setError("Faltan datos del flujo (cédula o IMEI). Vuelve al Paso 1.");
-      setCargando(false);
+      setEstado({
+        tipo: "error",
+        mensaje: "Faltan datos de la venta (cédula o IMEI). Vuelve al Paso 1.",
+      });
       return;
     }
-    fetch(`/api/producto/buscar-imei?imei=${imei}`)
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) {
-          setError(data.error || "Error al cargar producto");
+    (async () => {
+      try {
+        const [rProd, rCliente, rSede] = await Promise.all([
+          fetch(`/api/producto/buscar-imei?imei=${imei}`),
+          fetch(`/api/cliente/buscar?cedula=${cedula}`),
+          fetch(`/api/sede/info`),
+        ]);
+        const dProd = await rProd.json();
+        const dCliente = await rCliente.json();
+        const dSede = await rSede.json();
+
+        if (!rProd.ok) {
+          setEstado({
+            tipo: "error",
+            mensaje: dProd.error || "Error al cargar producto",
+          });
           return;
         }
-        if (!data.encontrado) {
-          setError("Producto no encontrado en el inventario");
+        if (!dProd.encontrado) {
+          setEstado({ tipo: "error", mensaje: "Producto no encontrado" });
           return;
         }
-        if (data.disponible === false) {
-          setError(data.error || "Este equipo ya fue vendido");
+        if (dProd.disponible === false) {
+          setEstado({
+            tipo: "error",
+            mensaje: dProd.error || "Este equipo ya fue vendido",
+          });
           return;
         }
-        setProducto(data.producto);
-      })
-      .catch((e) => setError(e?.message || "Error"))
-      .finally(() => setCargando(false));
+        if (!dCliente.encontrado) {
+          setEstado({
+            tipo: "error",
+            mensaje: "Cliente no encontrado. Vuelve a Paso 1.",
+          });
+          return;
+        }
+        setProducto(dProd.producto);
+        setCliente(dCliente.cliente);
+        setSedeInfo(dSede);
+        setEstado({ tipo: "listo" });
+      } catch (e: any) {
+        setEstado({ tipo: "error", mensaje: e?.message || "Error de red" });
+      }
+    })();
   }, [status, cedula, imei]);
+
+  function actualizar(campo: string, valor: string) {
+    setForm((f) => ({ ...f, [campo]: valor }));
+  }
+
+  // Cálculos derivados
+  const valorTotalNum = Number(form.valorTotal) || 0;
+  const pagadoNum =
+    (Number(form.caja) || 0) +
+    (Number(form.efectivo) || 0) +
+    (Number(form.transferencia) || 0) +
+    (Number(form.otroMedio) || 0);
+  const restante = valorTotalNum - pagadoNum;
+  const esContado = form.financiera.toUpperCase() === "CONTADO";
+
+  async function confirmar() {
+    if (!form.financiera) {
+      setEstado({ tipo: "error", mensaje: "Selecciona la financiera" });
+      return;
+    }
+    if (!valorTotalNum || valorTotalNum <= 0) {
+      setEstado({ tipo: "error", mensaje: "Ingresa el valor total" });
+      return;
+    }
+    if (esContado && restante !== 0) {
+      setEstado({
+        tipo: "error",
+        mensaje: `En venta de Contado la suma de medios de pago debe cuadrar exacto con el total. Faltan $${restante.toLocaleString("es-CO")}.`,
+      });
+      return;
+    }
+
+    setEstado({ tipo: "guardando" });
+    try {
+      const r = await fetch("/api/venta/guardar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cedula,
+          imei,
+          filaInventario: filaInv,
+          financiera: form.financiera,
+          valorTotal: valorTotalNum,
+          porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
+          valorCuota: form.valorCuota ? Number(form.valorCuota) : undefined,
+          caja: form.caja ? Number(form.caja) : undefined,
+          efectivo: form.efectivo ? Number(form.efectivo) : undefined,
+          transferencia: form.transferencia ? Number(form.transferencia) : undefined,
+          otroMedio: form.otroMedio ? Number(form.otroMedio) : undefined,
+          observaciones: form.observaciones || undefined,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok || !data.ok) {
+        setEstado({ tipo: "error", mensaje: data.error || "Error al guardar" });
+        return;
+      }
+      setEstado({ tipo: "ok", filaVenta: data.filaVenta });
+    } catch (e: any) {
+      setEstado({ tipo: "error", mensaje: e?.message || "Error de red" });
+    }
+  }
 
   if (status === "loading" || !session) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <p className="text-muted text-sm">Cargando...</p>
+        <p className="text-muted text-sm">Cargando sesión...</p>
       </main>
     );
   }
 
+  if (estado.tipo === "cargando") {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <p className="text-muted text-sm">Cargando producto...</p>
+      </main>
+    );
+  }
+
+  if (estado.tipo === "error" && !producto) {
+    return (
+      <main className="min-h-screen p-6 max-w-lg mx-auto">
+        <div className="bg-red-950 border border-red-800 rounded-xl p-4 text-red-300 text-sm mb-4">
+          <strong>Error:</strong> {estado.mensaje}
+        </div>
+        <button
+          onClick={() => router.push("/venta/paso1")}
+          className="px-4 py-2 bg-[#141821] border border-[#2a2f3b] text-white rounded-lg"
+        >
+          ← Volver al Paso 1
+        </button>
+      </main>
+    );
+  }
+
+  // Pantalla de éxito
+  if (estado.tipo === "ok") {
+    return (
+      <main className="min-h-screen p-6 max-w-lg mx-auto">
+        <div className="bg-[#141821] border border-green-800 rounded-xl p-6 mb-6">
+          <div className="text-green-400 text-xs mb-2">✓ VENTA GUARDADA</div>
+          <h1 className="text-2xl font-bold mb-4">
+            Fila {estado.filaVenta} en hoja Ventas 2026
+          </h1>
+          {cliente && producto && (
+            <div className="text-sm text-muted space-y-1 mb-4">
+              <div>Cliente: <span className="text-white">{cliente.nombre}</span></div>
+              <div>Equipo: <span className="text-white">{producto.marca} {producto.equipo}</span></div>
+              <div>IMEI: <span className="text-white font-mono">{producto.imei}</span></div>
+              <div>Financiera: <span className="text-white">{form.financiera}</span></div>
+              <div>Valor: <span className="text-white">${valorTotalNum.toLocaleString("es-CO")}</span></div>
+            </div>
+          )}
+          <p className="text-muted text-xs">
+            El equipo quedó marcado como VENDIDO en el inventario. Ya no aparece en Paso 2.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex-1 py-3 bg-[#141821] border border-[#2a2f3b] text-white rounded-lg"
+          >
+            Dashboard
+          </button>
+          <button
+            onClick={() => router.push("/venta/paso1")}
+            className="flex-1 py-3 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg"
+          >
+            Nueva venta
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // Pantalla principal del formulario
   return (
     <main className="min-h-screen p-6 max-w-lg mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -85,37 +280,164 @@ function Paso3Pago() {
 
       <h1 className="text-2xl font-bold mb-1">Paso 3 · Pago</h1>
       <p className="text-muted text-sm mb-6">
-        Definir financiera, valor y medios de pago.
+        Financiera, valor, y desglose del pago.
       </p>
 
-      {cargando && <p className="text-muted text-sm">Cargando producto...</p>}
-
-      {error && (
-        <div className="bg-red-950 border border-red-800 rounded-xl p-3 text-red-300 text-sm mb-4">
-          {error}
-        </div>
-      )}
-
-      {producto && (
-        <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4 mb-6">
-          <div className="text-xs text-muted mb-1">PRODUCTO SELECCIONADO</div>
-          <div className="font-bold text-lg">
+      {/* Resumen cliente + producto */}
+      {cliente && producto && (
+        <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4 mb-6 text-sm space-y-1">
+          <div className="text-xs text-muted">CLIENTE</div>
+          <div className="font-medium">{cliente.nombre}</div>
+          <div className="text-muted mb-3">CC {cliente.cedula}{cliente.telefono ? ` · Tel ${cliente.telefono}` : ""}</div>
+          <div className="text-xs text-muted">PRODUCTO</div>
+          <div className="font-medium">
             {producto.marca} · {producto.equipo}
+            {producto.color && ` · ${producto.color}`}
           </div>
-          <div className="text-sm text-muted mt-1">
-            {producto.color && <>Color: {producto.color} · </>}
-            IMEI: <span className="font-mono">{producto.imei}</span>
-          </div>
+          <div className="font-mono text-xs text-muted">IMEI {producto.imei}</div>
         </div>
       )}
 
-      <div className="bg-yellow-950/30 border border-yellow-800 rounded-xl p-4 text-yellow-300 text-sm">
-        <strong>En construcción:</strong> Esta es la siguiente fase. Aquí
-        vendrá el formulario de financiera (KREDIYA / ADELANTOS / +KUPO /
-        BOGOTÁ / ADDI / SU+PAY / RENTING / ALCANOS / Contado), valor total,
-        porcentaje de cuota, y desglose de medios de pago. Después de guardar
-        este paso escribe en las 4-5 hojas correspondientes y genera la factura.
+      <div className="space-y-3">
+        {/* Financiera */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Financiera *</label>
+          <select
+            value={form.financiera}
+            onChange={(e) => actualizar("financiera", e.target.value)}
+            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          >
+            <option value="">-- Seleccionar --</option>
+            {sedeInfo?.financieras.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Valor total */}
+        <Numero
+          label="Valor total de la venta *"
+          value={form.valorTotal}
+          onChange={(v) => actualizar("valorTotal", v)}
+          placeholder="1500000"
+        />
+
+        {!esContado && (
+          <div className="grid grid-cols-2 gap-3">
+            <Numero
+              label="% cuota"
+              value={form.porcentajeCuota}
+              onChange={(v) => actualizar("porcentajeCuota", v)}
+              placeholder="25"
+            />
+            <Numero
+              label="Valor cuota"
+              value={form.valorCuota}
+              onChange={(v) => actualizar("valorCuota", v)}
+              placeholder="375000"
+            />
+          </div>
+        )}
+
+        <div className="pt-2 border-t border-[#2a2f3b] mt-4">
+          <p className="text-xs text-muted mb-2 font-medium">
+            Desglose del pago (opcional, debe sumar el total)
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Numero
+              label="Caja"
+              value={form.caja}
+              onChange={(v) => actualizar("caja", v)}
+            />
+            <Numero
+              label="Efectivo"
+              value={form.efectivo}
+              onChange={(v) => actualizar("efectivo", v)}
+            />
+            <Numero
+              label="Transferencia"
+              value={form.transferencia}
+              onChange={(v) => actualizar("transferencia", v)}
+            />
+            <Numero
+              label="Otro medio"
+              value={form.otroMedio}
+              onChange={(v) => actualizar("otroMedio", v)}
+            />
+          </div>
+
+          {valorTotalNum > 0 && pagadoNum > 0 && (
+            <div className="mt-3 p-3 bg-[#0b0d12] border border-[#2a2f3b] rounded text-xs">
+              <div className="flex justify-between text-muted">
+                <span>Total venta:</span>
+                <span className="text-white">${valorTotalNum.toLocaleString("es-CO")}</span>
+              </div>
+              <div className="flex justify-between text-muted mt-1">
+                <span>Pagado / asentado:</span>
+                <span className="text-white">${pagadoNum.toLocaleString("es-CO")}</span>
+              </div>
+              <div className="flex justify-between font-medium mt-1">
+                <span>Restante:</span>
+                <span className={restante === 0 ? "text-green-400" : restante > 0 ? "text-yellow-400" : "text-red-400"}>
+                  ${restante.toLocaleString("es-CO")}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs text-muted mb-1">Observaciones</label>
+          <textarea
+            value={form.observaciones}
+            onChange={(e) => actualizar("observaciones", e.target.value)}
+            rows={2}
+            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          />
+        </div>
       </div>
+
+      <button
+        onClick={confirmar}
+        disabled={estado.tipo === "guardando"}
+        className="w-full mt-6 py-4 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg text-lg"
+      >
+        {estado.tipo === "guardando" ? "Guardando..." : "Confirmar venta"}
+      </button>
+
+      {estado.tipo === "error" && (
+        <div className="mt-4 bg-red-950 border border-red-800 rounded-xl p-3 text-red-300 text-sm">
+          <strong>Error:</strong> {estado.mensaje}
+        </div>
+      )}
     </main>
+  );
+}
+
+function Numero({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-muted mb-1">{label}</label>
+      <input
+        type="tel"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/[^\d.]/g, ""))}
+        placeholder={placeholder}
+        className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
+      />
+    </div>
   );
 }
