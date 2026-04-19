@@ -37,6 +37,7 @@ export default function NuevoProducto() {
     precioCosto: "",
     proveedor: "",
     proveedorNuevo: "",
+    tipoEquipo: "",
   });
 
   const [estado, setEstado] = useState<
@@ -126,6 +127,7 @@ export default function NuevoProducto() {
           imei2: imei2 || undefined,
           precioCosto: form.precioCosto ? Number(form.precioCosto) : undefined,
           proveedor: proveedorFinal || undefined,
+            tipoEquipo: form.tipoEquipo || undefined,
         }),
       });
       const data = await r.json();
@@ -186,6 +188,23 @@ export default function NuevoProducto() {
       </p>
 
       <div className="space-y-3">
+        {/* TIPO EQUIPO */}
+        <div>
+          <label className="block text-xs text-muted mb-1">Tipo de Equipo</label>
+          <select
+            value={form.tipoEquipo}
+            onChange={(e) => actualizar("tipoEquipo", e.target.value)}
+            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          >
+            <option value="">Seleccionar tipo...</option>
+            <option value="android">Celular Android</option>
+            <option value="iphone">iPhone</option>
+            <option value="tablet">Tablet</option>
+            <option value="accesorio">Accesorio</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
         {/* MARCA */}
         <div>
           <label className="block text-xs text-muted mb-1">Marca *</label>
