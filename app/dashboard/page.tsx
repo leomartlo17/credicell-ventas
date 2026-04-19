@@ -42,19 +42,32 @@ export default function Dashboard() {
 
       <h1 className="text-2xl font-bold mb-1">Hola, {nombre}</h1>
       {sede ? (
-        <p className="text-muted text-sm mb-8">Tu sede: <span className="text-white font-medium">{sede.nombre}</span></p>
+        <p className="text-muted text-sm mb-8">
+          Tu sede: <span className="text-white font-medium">{sede.nombre}</span>
+        </p>
       ) : (
         <p className="text-yellow-400 text-sm mb-8">
           Tu cuenta no está asignada a ninguna sede. Pídele al admin que te agregue.
         </p>
       )}
 
-      <button
-        disabled={!sede}
-        className="w-full py-4 px-6 bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-[#0b0d12] font-bold rounded-xl transition-colors text-lg"
-      >
-        Nueva venta
-      </button>
+      <div className="space-y-3">
+        <button
+          disabled={!sede}
+          onClick={() => router.push("/venta")}
+          className="w-full py-4 px-6 bg-brand hover:bg-brand-light disabled:opacity-40 disabled:cursor-not-allowed text-[#0b0d12] font-bold rounded-xl transition-colors text-lg"
+        >
+          Nueva venta
+        </button>
+
+        <button
+          disabled={!sede}
+          onClick={() => router.push("/inventario")}
+          className="w-full py-4 px-6 bg-card border border-line hover:border-muted disabled:opacity-40 disabled:cursor-not-allowed text-ink font-bold rounded-xl transition-colors"
+        >
+          Inventario
+        </button>
+      </div>
     </main>
   );
 }
