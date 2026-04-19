@@ -8,7 +8,10 @@ export async function GET() {
   if (!session?.user?.email) {
     return NextResponse.json({ productos: [] }, { status: 401 });
   }
-  const sede = session.user as SessionConSede["user"];
+  const sede = session.sede;
+  if (!sede) {
+    return NextResponse.json({ productos: [] }, { status: 403 });
+  }
   try {
     const productos = await listarDisponibles(sede.libroId);
     return NextResponse.json({ productos });
