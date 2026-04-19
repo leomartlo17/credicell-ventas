@@ -88,6 +88,14 @@ export default function Dashboard() {
         Agregar producto al inventario
       </button>
 
+      <button
+        disabled={!sede}
+        onClick={() => router.push("/caja")}
+        className="w-full mt-3 py-3 px-6 bg-[#141821] hover:bg-[#1e242f] disabled:opacity-40 border border-[#2a2f3b] text-white rounded-xl transition-colors"
+      >
+        Ver caja (ingresos)
+      </button>
+
       {/* Controles admin */}
       {(session as any).esAdmin && (
         <div className="mt-8 pt-6 border-t border-[#2a2f3b]">

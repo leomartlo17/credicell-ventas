@@ -65,10 +65,13 @@ function Paso3Pago() {
     valorTotal: "",
     porcentajeCuota: "",
     valorCuota: "",
-    caja: "",
     efectivo: "",
+    caja: "",
     transferencia: "",
-    otroMedio: "",
+    nequi: "",
+    datafono: "",
+    wompi: "",
+    otro: "",
     observaciones: "",
   });
 
@@ -138,10 +141,13 @@ function Paso3Pago() {
   // Cálculos derivados
   const valorTotalNum = Number(form.valorTotal) || 0;
   const pagadoNum =
-    (Number(form.caja) || 0) +
     (Number(form.efectivo) || 0) +
+    (Number(form.caja) || 0) +
     (Number(form.transferencia) || 0) +
-    (Number(form.otroMedio) || 0);
+    (Number(form.nequi) || 0) +
+    (Number(form.datafono) || 0) +
+    (Number(form.wompi) || 0) +
+    (Number(form.otro) || 0);
   const restante = valorTotalNum - pagadoNum;
   const esContado = form.financiera.toUpperCase() === "CONTADO";
 
@@ -175,10 +181,13 @@ function Paso3Pago() {
           valorTotal: valorTotalNum,
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
           valorCuota: form.valorCuota ? Number(form.valorCuota) : undefined,
-          caja: form.caja ? Number(form.caja) : undefined,
           efectivo: form.efectivo ? Number(form.efectivo) : undefined,
+          caja: form.caja ? Number(form.caja) : undefined,
           transferencia: form.transferencia ? Number(form.transferencia) : undefined,
-          otroMedio: form.otroMedio ? Number(form.otroMedio) : undefined,
+          nequi: form.nequi ? Number(form.nequi) : undefined,
+          datafono: form.datafono ? Number(form.datafono) : undefined,
+          wompi: form.wompi ? Number(form.wompi) : undefined,
+          otro: form.otro ? Number(form.otro) : undefined,
           observaciones: form.observaciones || undefined,
         }),
       });
@@ -343,18 +352,21 @@ function Paso3Pago() {
 
         <div className="pt-2 border-t border-[#2a2f3b] mt-4">
           <p className="text-xs text-muted mb-2 font-medium">
-            Desglose del pago (opcional, debe sumar el total)
+            Desglose del pago por medio
+            {esContado
+              ? " — debe sumar el valor total"
+              : " — suma = cuota inicial (o lo que pagó el cliente hoy)"}
           </p>
           <div className="grid grid-cols-2 gap-3">
-            <Numero
-              label="Caja"
-              value={form.caja}
-              onChange={(v) => actualizar("caja", v)}
-            />
             <Numero
               label="Efectivo"
               value={form.efectivo}
               onChange={(v) => actualizar("efectivo", v)}
+            />
+            <Numero
+              label="Caja"
+              value={form.caja}
+              onChange={(v) => actualizar("caja", v)}
             />
             <Numero
               label="Transferencia"
@@ -362,9 +374,24 @@ function Paso3Pago() {
               onChange={(v) => actualizar("transferencia", v)}
             />
             <Numero
-              label="Otro medio"
-              value={form.otroMedio}
-              onChange={(v) => actualizar("otroMedio", v)}
+              label="Nequi"
+              value={form.nequi}
+              onChange={(v) => actualizar("nequi", v)}
+            />
+            <Numero
+              label="Datáfono"
+              value={form.datafono}
+              onChange={(v) => actualizar("datafono", v)}
+            />
+            <Numero
+              label="Wompi"
+              value={form.wompi}
+              onChange={(v) => actualizar("wompi", v)}
+            />
+            <Numero
+              label="Otro"
+              value={form.otro}
+              onChange={(v) => actualizar("otro", v)}
             />
           </div>
 

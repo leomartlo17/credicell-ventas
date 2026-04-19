@@ -20,6 +20,22 @@ import { buscarPorImei } from "@/lib/inventario";
 
 export const HOJA_VENTAS = "Ventas 2026";
 
+/**
+ * Medios de pago soportados. Cada venta puede tener un monto en cualquier
+ * combinación de ellos. La suma debe cuadrar con lo abonado (el valor total
+ * en Contado, o la cuota inicial cuando hay financiera).
+ */
+export const MEDIOS_PAGO = [
+  "EFECTIVO",
+  "CAJA",
+  "TRANSFERENCIA",
+  "NEQUI",
+  "DATAFONO",
+  "WOMPI",
+  "OTRO",
+] as const;
+export type MedioPago = (typeof MEDIOS_PAGO)[number];
+
 const HEADERS_VENTAS = [
   "FECHA",
   "ASESOR",
@@ -32,11 +48,15 @@ const HEADERS_VENTAS = [
   "FINANCIERA",
   "VALOR TOTAL",
   "% CUOTA",
-  "CUOTA",
-  "CAJA",
+  "VALOR CUOTA",
   "EFECTIVO",
+  "CAJA",
   "TRANSFERENCIA",
-  "OTRO MEDIO",
+  "NEQUI",
+  "DATAFONO",
+  "WOMPI",
+  "OTRO",
+  "TOTAL ABONADO",
   "OBSERVACIONES",
 ];
 
@@ -47,17 +67,21 @@ export type VentaInput = {
   equipo: string;
   color: string;
   imei: string;
-  filaInventario: number; // fila real en la hoja para marcar vendido
+  filaInventario: number;
   financiera: string;
   valorTotal: number;
   porcentajeCuota?: number;
   valorCuota?: number;
-  caja?: number;
+  // Medios de pago individuales
   efectivo?: number;
+  caja?: number;
   transferencia?: number;
-  otroMedio?: number;
+  nequi?: number;
+  datafono?: number;
+  wompi?: number;
+  otro?: number;
   observaciones?: string;
-  asesor: string; // email o nombre corto
+  asesor: string;
 };
 
 async function asegurarHojaVentas(libroId: string): Promise<string> {
@@ -140,6 +164,16 @@ export async function guardarVenta(
   // 1) Marcar vendido en inventario
   await marcarVendidoEnInventario(libroId, hojaInv, venta.filaInventario, fechaHoy);
 
+  // Total abonado (suma de todos los medios de pago)
+  const totalAbonado =
+    (venta.efectivo || 0) +
+    (venta.caja || 0) +
+    (venta.transferencia || 0) +
+    (venta.nequi || 0) +
+    (venta.datafono || 0) +
+    (venta.wompi || 0) +
+    (venta.otro || 0);
+
   // 2) Asegurar hoja de Ventas + escribir fila
   const hojaVen = await asegurarHojaVentas(libroId);
   const fila = [
@@ -155,10 +189,14 @@ export async function guardarVenta(
     venta.valorTotal,
     venta.porcentajeCuota ?? "",
     venta.valorCuota ?? "",
-    venta.caja ?? "",
     venta.efectivo ?? "",
+    venta.caja ?? "",
     venta.transferencia ?? "",
-    venta.otroMedio ?? "",
+    venta.nequi ?? "",
+    venta.datafono ?? "",
+    venta.wompi ?? "",
+    venta.otro ?? "",
+    totalAbonado,
     venta.observaciones || "",
   ];
   const { filaEscrita } = await agregarFila(libroId, hojaVen, fila);
