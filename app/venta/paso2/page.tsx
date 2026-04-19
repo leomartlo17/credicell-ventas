@@ -152,10 +152,22 @@ function Paso2Producto() {
         <div className="text-muted text-xs">CC: {cedula}</div>
       </div>
 
-      <h1 className="text-2xl font-bold mb-1">Paso 2 · Producto</h1>
-      <p className="text-muted text-sm mb-6">
-        Busca por IMEI o filtra el inventario disponible.
-      </p>
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-1">Paso 2 · Producto</h1>
+          <p className="text-muted text-sm">
+            Busca por IMEI o filtra el inventario disponible.
+          </p>
+        </div>
+        <button
+          onClick={cargar}
+          disabled={cargando}
+          title="Refrescar inventario desde Google Sheets"
+          className="px-3 py-2 text-xs bg-[#141821] hover:bg-[#1e242f] border border-[#2a2f3b] text-muted hover:text-white rounded-lg"
+        >
+          ↻ Refrescar
+        </button>
+      </div>
 
       {/* Atajo: IMEI directo */}
       <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4 mb-6">
@@ -232,9 +244,22 @@ function Paso2Producto() {
       {cargando ? (
         <p className="text-muted text-sm text-center py-10">Cargando inventario...</p>
       ) : productos.length === 0 ? (
-        <p className="text-muted text-sm text-center py-10">
-          No hay productos disponibles con esos filtros.
-        </p>
+        <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-6 text-center">
+          <p className="text-white font-medium mb-2">
+            No hay productos disponibles
+          </p>
+          <p className="text-muted text-sm mb-4">
+            {marca || equipo || color
+              ? "Ningún equipo coincide con esos filtros. Limpia los filtros o agrega un producto nuevo."
+              : "El inventario está vacío. Carga equipos primero para poder venderlos."}
+          </p>
+          <button
+            onClick={() => router.push("/inventario/nuevo")}
+            className="px-4 py-2 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg text-sm"
+          >
+            + Agregar producto al inventario
+          </button>
+        </div>
       ) : (
         <ListaAgrupada productos={productos} onSeleccionar={seleccionar} />
       )}
