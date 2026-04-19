@@ -6,6 +6,22 @@ import { useEffect, useState } from "react";
 
 type Periodo = "hoy" | "mes" | "30dias" | "todo";
 
+type Mov = {
+  fila: number;
+  fecha: string;
+  hora: string;
+  tipo: "INGRESO" | "EGRESO";
+  concepto: string;
+  establecimiento: string;
+  monto: number;
+  saldoDespues: number;
+  asesor: string;
+  referencia: string;
+  urlFactura: string;
+  prestamoOtraSede: boolean;
+  observaciones: string;
+};
+
 type Resumen = {
   totalVentas: number;
   totalAbonado: number;
@@ -14,8 +30,6 @@ type Resumen = {
   porMedio: Record<string, number>;
   porFinanciera: Record<string, number>;
   periodo: Periodo;
-  desde: string | null;
-  hasta: string | null;
   sede: string;
 };
 
@@ -31,6 +45,8 @@ export default function Caja() {
   const router = useRouter();
   const [periodo, setPeriodo] = useState<Periodo>("mes");
   const [resumen, setResumen] = useState<Resumen | null>(null);
+  const [saldo, setSaldo] = useState<number | null>(null);
+  const [movimientos, setMovimientos] = useState<Mov[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
 
@@ -42,13 +58,20 @@ export default function Caja() {
     setCargando(true);
     setError("");
     try {
-      const r = await fetch(`/api/caja/resumen?periodo=${p}`);
-      const data = await r.json();
-      if (!r.ok) {
-        setError(data.error || "Error");
-        setResumen(null);
+      const [rResumen, rCaja] = await Promise.all([
+        fetch(`/api/caja/resumen?periodo=${p}`),
+        fetch(`/api/caja/movimientos`),
+      ]);
+      const dRes = await rResumen.json();
+      const dCaja = await rCaja.json();
+      if (!rResumen.ok) {
+        setError(dRes.error || "Error resumen");
       } else {
-        setResumen(data);
+        setResumen(dRes);
+      }
+      if (rCaja.ok) {
+        setSaldo(dCaja.saldo);
+        setMovimientos(dCaja.movimientos || []);
       }
     } catch (e: any) {
       setError(e?.message || "Error de red");
@@ -92,11 +115,67 @@ export default function Caja() {
 
       <h1 className="text-2xl font-bold mb-1">Caja</h1>
       <p className="text-muted text-sm mb-4">
-        Resumen de ingresos por medio de pago y por financiera.
+        Efectivo actual en la tienda, movimientos y resumen de ventas.
       </p>
 
-      {/* Selector de periodo */}
-      <div className="flex gap-2 mb-6 overflow-x-auto">
+      {/* SALDO ACTUAL EN EFECTIVO — tarjeta destacada */}
+      <div className="bg-gradient-to-br from-brand/20 to-brand/5 border border-brand rounded-xl p-4 mb-4">
+        <div className="text-xs text-muted mb-1">SALDO ACTUAL EN EFECTIVO</div>
+        <div className="text-3xl font-bold text-brand mb-2">
+          {saldo !== null ? fmt(saldo) : "..."}
+        </div>
+        <button
+          onClick={() => router.push("/caja/egreso")}
+          className="px-3 py-2 bg-brand hover:bg-brand-light text-[#0b0d12] font-bold rounded-lg text-sm"
+        >
+          + Registrar egreso
+        </button>
+      </div>
+
+      {/* ÚLTIMOS MOVIMIENTOS DE CAJA */}
+      <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4 mb-4">
+        <h2 className="text-sm font-bold mb-3 text-brand">
+          Últimos movimientos de caja
+        </h2>
+        {movimientos.length === 0 ? (
+          <p className="text-muted text-xs">
+            Aún no hay movimientos. Las ventas con efectivo entran automático,
+            y los egresos se registran con el botón de arriba.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {movimientos.slice(0, 10).map((m) => (
+              <li
+                key={m.fila}
+                className="border-b border-[#1e242f] pb-2 last:border-b-0 text-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <span
+                    className={
+                      m.tipo === "INGRESO"
+                        ? "text-green-400 font-bold"
+                        : "text-red-400 font-bold"
+                    }
+                  >
+                    {m.tipo === "INGRESO" ? "+" : "−"} {fmt(m.monto)}
+                  </span>
+                  <span className="text-muted">{m.fecha} {m.hora}</span>
+                </div>
+                <div className="text-muted mt-1">
+                  {m.concepto}
+                  {m.establecimiento && ` · ${m.establecimiento}`}
+                </div>
+                {m.referencia && (
+                  <div className="text-[10px] text-muted/70 mt-1">{m.referencia}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* RESUMEN DE VENTAS POR PERIODO */}
+      <div className="flex gap-2 mb-4 overflow-x-auto">
         {PERIODOS.map((p) => (
           <button
             key={p.valor}
@@ -112,46 +191,42 @@ export default function Caja() {
         ))}
       </div>
 
-      {cargando && <p className="text-muted text-sm">Cargando...</p>}
-
       {error && (
         <div className="bg-red-950 border border-red-800 rounded-xl p-3 text-red-300 text-sm mb-4">
           {error}
         </div>
       )}
 
-      {resumen && !cargando && (
+      {resumen && (
         <div className="space-y-4">
-          {/* Cards totales */}
           <div className="grid grid-cols-2 gap-3">
             <Card
               titulo="Ventas totales"
               valor={fmt(resumen.totalVentas)}
               sub={`${resumen.contadorVentas} venta${resumen.contadorVentas === 1 ? "" : "s"}`}
-              destacar
             />
             <Card
-              titulo="Abonado hoy"
+              titulo="Recibido en mano"
               valor={fmt(resumen.totalAbonado)}
-              sub="Dinero efectivamente cobrado"
+              sub="Suma de medios de pago"
             />
           </div>
 
           {resumen.pendienteFinanciera > 0 && (
             <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-3 text-sm">
-              <div className="text-muted text-xs mb-1">Financiado (pendiente)</div>
+              <div className="text-muted text-xs mb-1">
+                Financiado pendiente de pago de financieras
+              </div>
               <div className="text-white font-bold">
                 {fmt(resumen.pendienteFinanciera)}
-              </div>
-              <div className="text-xs text-muted mt-1">
-                = Ventas totales − Abonado. Lo que cubre la financiera.
               </div>
             </div>
           )}
 
-          {/* Por medio de pago */}
           <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4">
-            <h2 className="text-sm font-bold mb-3 text-brand">Por medio de pago</h2>
+            <h2 className="text-sm font-bold mb-3 text-brand">
+              Ingresos por medio de pago
+            </h2>
             <div className="space-y-2">
               {Object.entries(resumen.porMedio)
                 .filter(([, v]) => v > 0)
@@ -160,38 +235,24 @@ export default function Caja() {
                   <Linea key={medio} etiqueta={medio} monto={fmt(monto)} />
                 ))}
               {Object.values(resumen.porMedio).every((v) => v === 0) && (
-                <p className="text-muted text-xs">
-                  No hay ventas con medios de pago registrados en este período.
-                </p>
+                <p className="text-muted text-xs">Sin datos en este período.</p>
               )}
             </div>
           </div>
 
-          {/* Por financiera */}
           <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4">
             <h2 className="text-sm font-bold mb-3 text-brand">Por financiera</h2>
             <div className="space-y-2">
               {Object.entries(resumen.porFinanciera)
                 .sort(([, a], [, b]) => b - a)
-                .map(([financiera, monto]) => (
-                  <Linea
-                    key={financiera}
-                    etiqueta={financiera}
-                    monto={fmt(monto)}
-                  />
+                .map(([f, monto]) => (
+                  <Linea key={f} etiqueta={f} monto={fmt(monto)} />
                 ))}
               {Object.keys(resumen.porFinanciera).length === 0 && (
-                <p className="text-muted text-xs">
-                  No hay ventas en este período.
-                </p>
+                <p className="text-muted text-xs">Sin datos en este período.</p>
               )}
             </div>
           </div>
-
-          <p className="text-xs text-muted mt-4 text-center">
-            Datos desde hoja "Ventas 2026" · Sede {resumen.sede}
-            {resumen.desde && ` · desde ${resumen.desde}`}
-          </p>
         </div>
       )}
     </main>
@@ -202,23 +263,15 @@ function Card({
   titulo,
   valor,
   sub,
-  destacar,
 }: {
   titulo: string;
   valor: string;
   sub?: string;
-  destacar?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-xl p-3 border ${
-        destacar ? "bg-brand/10 border-brand" : "bg-[#141821] border-[#2a2f3b]"
-      }`}
-    >
+    <div className="rounded-xl p-3 border bg-[#141821] border-[#2a2f3b]">
       <div className="text-muted text-xs mb-1">{titulo}</div>
-      <div className={`font-bold ${destacar ? "text-brand" : "text-white"}`}>
-        {valor}
-      </div>
+      <div className="font-bold text-white">{valor}</div>
       {sub && <div className="text-xs text-muted mt-1">{sub}</div>}
     </div>
   );

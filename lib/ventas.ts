@@ -317,5 +317,21 @@ export async function guardarVenta(
     await agregarFila(libroId, hojaFin, filaFinanciera);
   }
 
+  // 4) Si la venta tuvo pago en efectivo, registrar INGRESO en Caja 2026.
+  //    Se hace al final para que el saldo refleje correctamente.
+  if ((venta.efectivo || 0) > 0) {
+    // Importar dinámicamente para evitar ciclo de dependencias
+    const { registrarMovimiento } = await import("@/lib/caja");
+    await registrarMovimiento(libroId, {
+      tipo: "INGRESO",
+      concepto: venta.financiera.toUpperCase() === "CONTADO" ? "VENTA CONTADO" : "INICIAL CREDITO",
+      establecimiento: venta.clienteNombre,
+      monto: venta.efectivo!,
+      asesor: venta.asesor,
+      referencia: `IMEI ${venta.imei} · CC ${venta.cedula}`,
+      observaciones: `Efectivo de ${venta.marca} ${venta.equipo} (${venta.financiera})`,
+    });
+  }
+
   return { ok: true, filaVenta: filaEscrita };
 }

@@ -6,8 +6,232 @@
  * Filtra siempre por 2026+ (regla universal) y permite filtrar por
  * período: hoy, mes actual, últimos 30 días, o todo.
  */
-import { leerRango, listarHojas } from "@/lib/google-sheets";
+import {
+  leerRango,
+  listarHojas,
+  agregarFila,
+  crearHoja,
+  escribirRango,
+} from "@/lib/google-sheets";
 import { HOJA_VENTAS, MEDIOS_PAGO, MedioPago } from "@/lib/ventas";
+
+/**
+ * Hoja dedicada al movimiento de EFECTIVO físico de la sede. Registra
+ * cada peso que entra (por venta en efectivo, por abono de cuota, etc.)
+ * y cada peso que sale (pago a proveedor, gasto de aseo, transporte…).
+ * El saldo actual se calcula sumando ingresos y restando egresos.
+ */
+export const HOJA_CAJA = "Caja 2026";
+
+const HEADERS_CAJA = [
+  "FECHA",
+  "HORA",
+  "TIPO", // INGRESO | EGRESO
+  "CONCEPTO", // VENTA, CUOTA, PROVEEDOR, ASEO, etc.
+  "ESTABLECIMIENTO", // a quien se le pago / de donde vino
+  "MONTO",
+  "SALDO DESPUES",
+  "ASESOR",
+  "REFERENCIA", // IMEI si es venta, cedula si es cuota, numero factura si es gasto
+  "FOTO FACTURA", // URL de la imagen (cuando aplica, egresos)
+  "PRESTAMO OTRA SEDE", // SI/NO — si el efectivo salio para una compra de otra sede
+  "OBSERVACIONES",
+];
+
+export type TipoMovimiento = "INGRESO" | "EGRESO";
+
+export type MovimientoCaja = {
+  tipo: TipoMovimiento;
+  concepto: string;
+  establecimiento?: string;
+  monto: number;
+  asesor: string;
+  referencia?: string;
+  urlFactura?: string;
+  prestamoOtraSede?: boolean;
+  observaciones?: string;
+};
+
+async function asegurarHojaCaja(libroId: string): Promise<string> {
+  const hojas = await listarHojas(libroId);
+  if (hojas.includes(HOJA_CAJA)) return HOJA_CAJA;
+  await crearHoja(libroId, HOJA_CAJA);
+  await escribirRango(libroId, `'${HOJA_CAJA}'!A1`, [HEADERS_CAJA]);
+  return HOJA_CAJA;
+}
+
+/**
+ * Registra un movimiento en la hoja Caja 2026. Recalcula el saldo actual
+ * (ingresos − egresos hasta ese momento) y lo escribe en la columna
+ * SALDO DESPUES para que Leonardo pueda abrir la hoja y ver el acumulado
+ * sin fórmulas.
+ */
+export async function registrarMovimiento(
+  libroId: string,
+  mov: MovimientoCaja
+): Promise<{ filaEscrita: number; saldoDespues: number }> {
+  const hoja = await asegurarHojaCaja(libroId);
+
+  // Calcular saldo actual para poner en columna SALDO DESPUES
+  const saldoAntes = await saldoActual(libroId);
+  const delta = mov.tipo === "INGRESO" ? mov.monto : -mov.monto;
+  const saldoDespues = saldoAntes + delta;
+
+  const ahora = new Date();
+  const fecha = ahora.toISOString().slice(0, 10);
+  const hora = ahora.toTimeString().slice(0, 5);
+
+  const fila = [
+    fecha,
+    hora,
+    mov.tipo,
+    (mov.concepto || "").trim(),
+    (mov.establecimiento || "").trim(),
+    mov.monto,
+    saldoDespues,
+    mov.asesor,
+    (mov.referencia || "").trim(),
+    (mov.urlFactura || "").trim(),
+    mov.prestamoOtraSede ? "SI" : "",
+    (mov.observaciones || "").trim(),
+  ];
+  const { filaEscrita } = await agregarFila(libroId, hoja, fila);
+  return { filaEscrita, saldoDespues };
+}
+
+/**
+ * Calcula el saldo actual de efectivo = suma de INGRESOS − suma de EGRESOS
+ * en la hoja Caja 2026 (considerando solo filas con fecha 2026+).
+ * Si la hoja no existe todavía retorna 0.
+ */
+export async function saldoActual(libroId: string): Promise<number> {
+  const hojas = await listarHojas(libroId);
+  if (!hojas.includes(HOJA_CAJA)) return 0;
+  const filas = await leerRango(libroId, `'${HOJA_CAJA}'!A1:Z`);
+  if (filas.length < 2) return 0;
+
+  const headers = (filas[0] || []).map((x) => String(x || "").toUpperCase());
+  const idxTipo = headers.findIndex((h) => h.trim() === "TIPO");
+  const idxMonto = headers.findIndex((h) => h.trim() === "MONTO");
+  if (idxTipo < 0 || idxMonto < 0) return 0;
+
+  let saldo = 0;
+  for (let i = 1; i < filas.length; i++) {
+    const fila = filas[i] || [];
+    const tipo = String(fila[idxTipo] || "").toUpperCase().trim();
+    const monto = parseNumero(fila[idxMonto]);
+    if (tipo === "INGRESO") saldo += monto;
+    else if (tipo === "EGRESO") saldo -= monto;
+  }
+  return saldo;
+}
+
+/**
+ * Lista los últimos N movimientos de caja, ordenados de más reciente
+ * a más antiguo (por orden de fila en la hoja — el más abajo es el más
+ * nuevo).
+ */
+export async function listarMovimientos(
+  libroId: string,
+  limite: number = 20
+): Promise<Array<MovimientoCaja & { fecha: string; hora: string; saldoDespues: number; fila: number }>> {
+  const hojas = await listarHojas(libroId);
+  if (!hojas.includes(HOJA_CAJA)) return [];
+  const filas = await leerRango(libroId, `'${HOJA_CAJA}'!A1:Z`);
+  if (filas.length < 2) return [];
+
+  const headers = (filas[0] || []).map((x) => String(x || "").toUpperCase().trim());
+  const col = (n: string) => headers.findIndex((h) => h === n);
+  const ixs = {
+    fecha: col("FECHA"),
+    hora: col("HORA"),
+    tipo: col("TIPO"),
+    concepto: col("CONCEPTO"),
+    establecimiento: col("ESTABLECIMIENTO"),
+    monto: col("MONTO"),
+    saldo: col("SALDO DESPUES"),
+    asesor: col("ASESOR"),
+    referencia: col("REFERENCIA"),
+    foto: col("FOTO FACTURA"),
+    prestamo: col("PRESTAMO OTRA SEDE"),
+    obs: col("OBSERVACIONES"),
+  };
+
+  const result: Array<any> = [];
+  for (let i = 1; i < filas.length; i++) {
+    const f = filas[i] || [];
+    if (!f[ixs.tipo]) continue;
+    result.push({
+      fila: i + 1,
+      fecha: String(f[ixs.fecha] || ""),
+      hora: String(f[ixs.hora] || ""),
+      tipo: String(f[ixs.tipo] || "").toUpperCase() as TipoMovimiento,
+      concepto: String(f[ixs.concepto] || ""),
+      establecimiento: String(f[ixs.establecimiento] || ""),
+      monto: parseNumero(f[ixs.monto]),
+      saldoDespues: parseNumero(f[ixs.saldo]),
+      asesor: String(f[ixs.asesor] || ""),
+      referencia: String(f[ixs.referencia] || ""),
+      urlFactura: String(f[ixs.foto] || ""),
+      prestamoOtraSede: String(f[ixs.prestamo] || "").toUpperCase() === "SI",
+      observaciones: String(f[ixs.obs] || ""),
+    });
+  }
+  // Más reciente primero
+  return result.reverse().slice(0, limite);
+}
+
+/**
+ * Lee todos los conceptos y establecimientos ya usados en Caja 2026,
+ * para poblar los dropdowns del form de egreso. Si la hoja no existe,
+ * retorna listas predeterminadas.
+ */
+export async function catalogoCaja(libroId: string): Promise<{
+  conceptos: string[];
+  establecimientos: string[];
+}> {
+  const predeterminados = {
+    conceptos: [
+      "PROVEEDOR CELULARES",
+      "PROVEEDOR ACCESORIOS",
+      "ASEO",
+      "PAPELERIA",
+      "TRANSPORTE",
+      "SERVICIOS PUBLICOS",
+      "ALIMENTACION",
+      "MANTENIMIENTO",
+      "OTRO",
+    ],
+    establecimientos: [],
+  };
+  const hojas = await listarHojas(libroId);
+  if (!hojas.includes(HOJA_CAJA)) return predeterminados;
+
+  const filas = await leerRango(libroId, `'${HOJA_CAJA}'!A1:Z`);
+  if (filas.length < 2) return predeterminados;
+
+  const headers = (filas[0] || []).map((x) => String(x || "").toUpperCase().trim());
+  const idxTipo = headers.findIndex((h) => h === "TIPO");
+  const idxConc = headers.findIndex((h) => h === "CONCEPTO");
+  const idxEst = headers.findIndex((h) => h === "ESTABLECIMIENTO");
+
+  const conceptosSet = new Set<string>(predeterminados.conceptos);
+  const establecimientosSet = new Set<string>();
+
+  for (let i = 1; i < filas.length; i++) {
+    const f = filas[i] || [];
+    if (String(f[idxTipo] || "").toUpperCase() !== "EGRESO") continue;
+    const c = String(f[idxConc] || "").trim();
+    if (c) conceptosSet.add(c);
+    const e = String(f[idxEst] || "").trim();
+    if (e) establecimientosSet.add(e);
+  }
+
+  return {
+    conceptos: [...conceptosSet].sort(),
+    establecimientos: [...establecimientosSet].sort(),
+  };
+}
 
 export type Periodo = "hoy" | "mes" | "30dias" | "todo";
 
