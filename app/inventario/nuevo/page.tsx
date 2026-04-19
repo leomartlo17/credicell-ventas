@@ -26,6 +26,7 @@ export default function NuevoProducto() {
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
 
   const [tipoEquipo, setTipoEquipo] = useState("Android");
+  const esIphone = tipoEquipo === "iPhone";
 
   const [form, setForm] = useState({
     marca: "",
@@ -74,9 +75,10 @@ export default function NuevoProducto() {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
-  // Marca final: si eligió "nueva", usa marcaNueva; si eligió de la lista, usa ese
-  const marcaFinal =
-    form.marca === NUEVO ? form.marcaNueva.trim() : form.marca;
+  // Marca final: iPhone siempre es Apple; otros usan el dropdown/nuevo
+  const marcaFinal = esIphone
+    ? "Apple"
+    : form.marca === NUEVO ? form.marcaNueva.trim() : form.marca;
   const equipoFinal =
     form.equipo === NUEVO ? form.equipoNuevo.trim() : form.equipo;
   const colorFinal =
@@ -90,7 +92,7 @@ export default function NuevoProducto() {
     : [];
 
   async function guardar() {
-    if (!marcaFinal) {
+    if (!esIphone && !marcaFinal) {
       setEstado({ tipo: "error", mensaje: "Selecciona o crea una marca" });
       return;
     }
@@ -203,44 +205,49 @@ export default function NuevoProducto() {
           </select>
         </div>
 
-        {/* MARCA */}
-        <div>
-          <label className="block text-xs text-muted mb-1">Marca *</label>
-          <select
-            value={form.marca}
-            onChange={(e) => {
-              const v = e.target.value;
-              actualizar("marca", v);
-              // al cambiar marca, reset equipo y color
-              setForm((f) => ({
-                ...f,
-                marca: v,
-                equipo: "",
-                equipoNuevo: "",
-              }));
-            }}
-            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
-          >
-            <option value="">
-              {cargandoCatalogo ? "Cargando..." : "-- Seleccionar --"}
-            </option>
-            {catalogo.marcas.map((m) => (
-              <option key={m} value={m}>
-                {m}
+        {/* MARCA — oculta para iPhone (siempre Apple) */}
+        {esIphone ? (
+          <div className="px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-muted text-sm">
+            Marca: <span className="text-white font-medium">Apple</span> (automático)
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs text-muted mb-1">Marca *</label>
+            <select
+              value={form.marca}
+              onChange={(e) => {
+                const v = e.target.value;
+                actualizar("marca", v);
+                setForm((f) => ({
+                  ...f,
+                  marca: v,
+                  equipo: "",
+                  equipoNuevo: "",
+                }));
+              }}
+              className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+            >
+              <option value="">
+                {cargandoCatalogo ? "Cargando..." : "-- Seleccionar --"}
               </option>
-            ))}
-            <option value={NUEVO}>+ Crear nueva marca...</option>
-          </select>
-          {form.marca === NUEVO && (
-            <input
-              type="text"
-              placeholder="Nombre de la nueva marca (ej: Xiaomi)"
-              value={form.marcaNueva}
-              onChange={(e) => actualizar("marcaNueva", e.target.value)}
-              className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-yellow-500 text-sm"
-            />
-          )}
-        </div>
+              {catalogo.marcas.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+              <option value={NUEVO}>+ Crear nueva marca...</option>
+            </select>
+            {form.marca === NUEVO && (
+              <input
+                type="text"
+                placeholder="Nombre de la nueva marca (ej: Xiaomi)"
+                value={form.marcaNueva}
+                onChange={(e) => actualizar("marcaNueva", e.target.value)}
+                className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-yellow-500 text-sm"
+              />
+            )}
+          </div>
+        )}
 
         {/* EQUIPO */}
         <div>
