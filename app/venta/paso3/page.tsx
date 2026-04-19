@@ -23,8 +23,10 @@ export default function Paso3Wrapper() {
 type Producto = {
   marca: string;
   equipo: string;
+  tipoEquipo?: string;
   color: string;
   imei: string;
+  precioCosto?: number;
   fila: number;
 };
 
@@ -85,6 +87,7 @@ function Paso3Pago() {
     financiera: "",
     valorTotal: "",
     porcentajeCuota: "",
+    porcentajeKupo: "20",
     valorRecibir: "",
     observaciones: "",
   });
@@ -244,6 +247,17 @@ function Paso3Pago() {
   const esKrediyaOPayJoy =
     form.financiera === "KREDIYA" || form.financiera === "PAYJOY";
 
+  // +Kupo con iPhone: flujo especial con % de inicial
+  const esKupoIphone =
+    form.financiera === "+KUPO" && producto?.tipoEquipo === "iPhone";
+  const precioKupo = valorTotalNum || producto?.precioCosto || 0;
+  const minPctKupo = precioKupo <= 3_000_000
+    ? 20
+    : Math.min(80, Math.max(20, Math.ceil(((precioKupo - 3_000_000) / precioKupo) * 100)));
+  const pctKupoNum = Math.max(minPctKupo, Number(form.porcentajeKupo) || minPctKupo);
+  const inicialKupo = Math.round(precioKupo * pctKupoNum / 100);
+  const financiadoKupo = precioKupo - inicialKupo;
+
   async function confirmar() {
     if (!form.financiera) {
       setEstado({ tipo: "error", mensaje: "Selecciona la financiera" });
@@ -260,7 +274,22 @@ function Paso3Pago() {
       });
       return;
     }
-    if (esKrediyaOPayJoy) {
+    if (esKupoIphone) {
+      if (pctKupoNum < minPctKupo) {
+        setEstado({
+          tipo: "error",
+          mensaje: `Porcentaje mínimo para este precio: ${minPctKupo}% (+Kupo financia máx $3.000.000)`,
+        });
+        return;
+      }
+      if (financiadoKupo > 3_000_000) {
+        setEstado({
+          tipo: "error",
+          mensaje: `+Kupo financia máximo $3.000.000. Sube el porcentaje inicial.`,
+        });
+        return;
+      }
+    } else if (esKrediyaOPayJoy) {
       if (!pctNum) {
         setEstado({
           tipo: "error",
@@ -313,6 +342,8 @@ function Paso3Pago() {
           financiera: form.financiera,
           valorTotal: valorTotalNum,
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
+          porcentajeKupo: esKupoIphone ? pctKupoNum : undefined,
+          inicialKupo: esKupoIphone ? inicialKupo : undefined,
           valorRecibir: form.valorRecibir ? Number(form.valorRecibir) : undefined,
           pagos: pagosArray,
           observaciones: form.observaciones || undefined,
@@ -461,6 +492,58 @@ function Paso3Pago() {
           placeholder="1500000"
         />
 
+        {/* +KUPO con iPhone: flujo especial de porcentaje */}
+        {esKupoIphone && valorTotalNum > 0 && (
+          <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
+            <div className="text-xs text-brand font-bold uppercase tracking-wider">
+              +Kupo · iPhone — Flujo especial
+            </div>
+            <div>
+              <div className="flex justify-between items-baseline mb-1">
+                <label className="text-xs text-muted">
+                  % que recibe Credicell (inicial)
+                </label>
+                <span className="text-brand font-bold">{pctKupoNum}%</span>
+              </div>
+              <input
+                type="range"
+                min={minPctKupo}
+                max={80}
+                step={1}
+                value={pctKupoNum}
+                onChange={(e) => actualizar("porcentajeKupo", e.target.value)}
+                className="w-full accent-brand"
+              />
+              <div className="flex justify-between text-xs text-muted mt-1">
+                <span>Mín {minPctKupo}%</span>
+                <span>80%</span>
+              </div>
+            </div>
+            <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted">Credicell recibe (inicial):</span>
+                <span className="font-bold text-white">${inicialKupo.toLocaleString("es-CO")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">+Kupo financia:</span>
+                <span className={`font-bold ${financiadoKupo > 3_000_000 ? "text-red-400" : "text-white"}`}>
+                  ${financiadoKupo.toLocaleString("es-CO")}
+                </span>
+              </div>
+              {financiadoKupo > 3_000_000 ? (
+                <p className="text-red-400 text-xs">
+                  +Kupo financia máximo $3.000.000. Sube el porcentaje.
+                </p>
+              ) : (
+                <p className="text-green-400 text-xs">Financiación válida</p>
+              )}
+            </div>
+            <p className="text-xs text-muted">
+              Agrega medios de pago abajo que sumen el inicial (${inicialKupo.toLocaleString("es-CO")}).
+            </p>
+          </div>
+        )}
+
         {esKrediyaOPayJoy && (
           <div className="bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3 space-y-3">
             <div className="text-xs text-muted font-medium">
@@ -536,7 +619,9 @@ function Paso3Pago() {
               ? " — debe sumar el valor total"
               : esKrediyaOPayJoy
                 ? " — debe sumar el valor a recibir (cuota inicial real)"
-                : " — lo que pagó el cliente hoy"}
+                : esKupoIphone
+                  ? ` — debe sumar el inicial ($${inicialKupo.toLocaleString("es-CO")})`
+                  : " — lo que pagó el cliente hoy"}
           </p>
           {/* UX: el asesor CONSTRUYE el desglose agregando medios uno
               por uno. Evita el ruido visual de mostrar todos los medios

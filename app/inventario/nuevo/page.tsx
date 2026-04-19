@@ -25,6 +25,8 @@ export default function NuevoProducto() {
   });
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
 
+  const [tipoEquipo, setTipoEquipo] = useState("Android");
+
   const [form, setForm] = useState({
     marca: "",
     marcaNueva: "",
@@ -37,7 +39,6 @@ export default function NuevoProducto() {
     precioCosto: "",
     proveedor: "",
     proveedorNuevo: "",
-    tipoEquipo: "",
   });
 
   const [estado, setEstado] = useState<
@@ -122,12 +123,12 @@ export default function NuevoProducto() {
         body: JSON.stringify({
           marca: marcaFinal,
           equipo: equipoFinal,
+          tipoEquipo: tipoEquipo || undefined,
           color: colorFinal || undefined,
           imei1,
           imei2: imei2 || undefined,
           precioCosto: form.precioCosto ? Number(form.precioCosto) : undefined,
           proveedor: proveedorFinal || undefined,
-            tipoEquipo: form.tipoEquipo || undefined,
         }),
       });
       const data = await r.json();
@@ -188,20 +189,17 @@ export default function NuevoProducto() {
       </p>
 
       <div className="space-y-3">
-        {/* TIPO EQUIPO */}
+        {/* TIPO DE EQUIPO */}
         <div>
-          <label className="block text-xs text-muted mb-1">Tipo de Equipo</label>
+          <label className="block text-xs text-muted mb-1">Tipo de equipo *</label>
           <select
-            value={form.tipoEquipo}
-            onChange={(e) => actualizar("tipoEquipo", e.target.value)}
+            value={tipoEquipo}
+            onChange={(e) => setTipoEquipo(e.target.value)}
             className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
           >
-            <option value="">Seleccionar tipo...</option>
-            <option value="android">Celular Android</option>
-            <option value="iphone">iPhone</option>
-            <option value="tablet">Tablet</option>
-            <option value="accesorio">Accesorio</option>
-            <option value="otro">Otro</option>
+            {["Android", "iPhone", "Tablet", "Accesorio", "Otro"].map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
           </select>
         </div>
 
