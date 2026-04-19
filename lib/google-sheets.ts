@@ -122,36 +122,13 @@ export async function crearHoja(
 }
 
 /**
- * Borra una pestaña (por título) del libro. Si no existe, no hace nada.
- * IRREVERSIBLE — se pierden todos los datos de esa pestaña.
- * Retorna true si la borró, false si no existía.
- */
-export async function eliminarHoja(
-  spreadsheetId: string,
-  titulo: string
-): Promise<boolean> {
-  const sheets = getSheetsClient();
-  const res = await sheets.spreadsheets.get({ spreadsheetId });
-  const hoja = res.data.sheets?.find((s) => s.properties?.title === titulo);
-  if (!hoja || !hoja.properties?.sheetId) return false;
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId,
-    requestBody: {
-      requests: [
-        {
-          deleteSheet: {
-            sheetId: hoja.properties.sheetId,
-          },
-        },
-      ],
-    },
-  });
-  return true;
-}
-
-/**
  * Escribe valores empezando en una celda (sobrescribiendo). Útil para
  * escribir el row de headers después de crear una hoja nueva.
+ *
+ * Nota: el sistema NO implementa función para borrar pestañas ni filas.
+ * Regla de Leonardo: todo se registra, nada se borra. Para cualquier
+ * ajuste de data se edita/renombra en Google Sheets directamente por
+ * el admin — no por la app.
  */
 export async function escribirRango(
   spreadsheetId: string,

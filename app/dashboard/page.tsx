@@ -142,13 +142,6 @@ export default function Dashboard() {
             </a>
           )}
 
-          <button
-            onClick={() => router.push("/admin/limpiar")}
-            className="w-full py-2 px-4 bg-red-950/50 hover:bg-red-900/50 border border-red-800 text-red-300 text-sm rounded-lg transition-colors mt-3"
-          >
-            🗑 Limpiar libro (borrar pestañas viejas)
-          </button>
-
           <div className="flex flex-col items-center gap-2 mt-4">
             <a
               href="/admin/diagnostico"
