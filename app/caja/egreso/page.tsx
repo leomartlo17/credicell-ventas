@@ -166,9 +166,22 @@ function RegistrarEgreso() {
 
     setEstado({ tipo: "guardando" });
     try {
-      // 1) Subir foto a Drive si hay archivo
+      // 1) Subir foto a Drive si hay archivo + Drive configurado.
+      //    Si el asesor adjuntó una foto pero Drive no está listo,
+      //    bloqueamos con mensaje claro — no permitimos "registrar
+      //    fingiendo que hay foto cuando no hay".
       let urlFinal = form.urlFactura.trim();
       if (archivo) {
+        if (!fotoUploadDisponible) {
+          setEstado({
+            tipo: "error",
+            mensaje:
+              "La subida de fotos a Drive no está configurada aún. " +
+              "Pide al admin que termine el setup, o usa el link manual " +
+              "(opción avanzada abajo).",
+          });
+          return;
+        }
         const uploaded = await subirFotoSiHay();
         if (uploaded) urlFinal = uploaded;
       }
@@ -383,59 +396,79 @@ function RegistrarEgreso() {
           />
         </div>
 
-        {/* Upload de foto — cambia entre file picker y URL manual según setup */}
+        {/* Upload de foto. Siempre primary = cámara/archivo. El input con
+            capture="environment" abre la cámara trasera directo en móvil.
+            URL manual queda escondida como último recurso. */}
         <div>
           <label className="block text-xs text-muted mb-1">
             Factura (foto) {requiereFactura && <span className="text-yellow-400">*</span>}
           </label>
-          {fotoUploadDisponible ? (
-            <div className="space-y-2">
-              <input
-                type="file"
-                accept="image/*,application/pdf"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] || null;
-                  setArchivo(f);
-                  if (f) actualizar("urlFactura", ""); // si subieron archivo, ignora URL
-                }}
-                className="w-full text-sm text-muted file:mr-3 file:py-2 file:px-3 file:rounded file:border-0 file:bg-brand file:text-[#0b0d12] file:text-sm file:font-medium hover:file:bg-brand-light"
-              />
-              {archivo && (
-                <div className="text-xs text-green-400">
-                  ✓ {archivo.name} ({Math.round(archivo.size / 1024)} KB)
-                </div>
-              )}
-              <details className="text-xs text-muted">
-                <summary className="cursor-pointer hover:text-white">
-                  O pega una URL de Drive (avanzado)
-                </summary>
-                <input
-                  type="url"
-                  value={form.urlFactura}
-                  onChange={(e) => actualizar("urlFactura", e.target.value)}
-                  placeholder="https://drive.google.com/..."
-                  className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
-                />
-              </details>
+
+          {/* Botón de cámara/archivo — siempre visible */}
+          <label
+            htmlFor="foto-factura"
+            className="flex items-center justify-center gap-2 w-full py-3 px-3 bg-[#0b0d12] hover:bg-[#141821] border border-dashed border-[#2a2f3b] hover:border-brand rounded-lg cursor-pointer text-sm text-muted hover:text-white transition-colors"
+          >
+            {archivo ? "📷 Cambiar foto" : "📷 Tomar foto de la factura"}
+          </label>
+          <input
+            id="foto-factura"
+            type="file"
+            accept="image/*,application/pdf"
+            capture="environment"
+            onChange={(e) => {
+              const f = e.target.files?.[0] || null;
+              setArchivo(f);
+              if (f) actualizar("urlFactura", "");
+            }}
+            className="hidden"
+          />
+
+          {archivo && (
+            <div className="mt-2 flex items-center justify-between bg-[#141821] border border-green-800 rounded-lg p-2 text-xs">
+              <span className="text-green-400 truncate">
+                ✓ {archivo.name} ({Math.round(archivo.size / 1024)} KB)
+              </span>
+              <button
+                type="button"
+                onClick={() => setArchivo(null)}
+                className="text-muted hover:text-red-400 ml-2"
+              >
+                ×
+              </button>
             </div>
-          ) : (
-            <div>
-              <input
-                type="url"
-                value={form.urlFactura}
-                onChange={(e) => actualizar("urlFactura", e.target.value)}
-                placeholder="https://drive.google.com/..."
-                className={`w-full px-3 py-2 bg-[#0b0d12] border rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none text-sm ${
-                  faltaFactura
-                    ? "border-yellow-700 focus:border-yellow-500"
-                    : "border-[#2a2f3b] focus:border-brand"
-                }`}
-              />
-              <p className="text-[10px] text-muted mt-1">
-                Upload directo aún no está configurado. Sube la foto a Drive y pega el link.
+          )}
+
+          {/* Warning si el asesor adjuntó archivo pero el Drive no está
+              configurado — así sabe que tiene que pedirle al admin que
+              termine el setup antes de que la foto se guarde. */}
+          {archivo && !fotoUploadDisponible && (
+            <div className="mt-2 bg-yellow-950 border border-yellow-800 rounded-lg p-3 text-xs text-yellow-300">
+              <div className="font-medium mb-1">
+                ⚠ La subida a Drive aún no está configurada
+              </div>
+              <p>
+                Cuando guardes, la foto NO se va a subir — Leonardo tiene que
+                completar el setup de la carpeta en Drive primero. Mientras tanto
+                puedes pegar un link manual o registrar el egreso sin foto (si
+                es menor a $20.000).
               </p>
             </div>
           )}
+
+          {/* URL manual — opción escondida como fallback */}
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[11px] text-muted hover:text-white">
+              No puedo tomar foto ahora — usar link de Drive
+            </summary>
+            <input
+              type="url"
+              value={form.urlFactura}
+              onChange={(e) => actualizar("urlFactura", e.target.value)}
+              placeholder="https://drive.google.com/..."
+              className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
+            />
+          </details>
         </div>
 
         <label className="flex items-center gap-2 text-sm">
