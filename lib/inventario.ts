@@ -37,6 +37,7 @@ const HEADERS_INVENTARIO = [
   "FECHA INGRESO",
   "MARCA",
   "EQUIPO",
+  "TIPO EQUIPO",
   "IMEI 1",
   "IMEI 2",
   "COLOR",
@@ -49,6 +50,7 @@ const HEADERS_INVENTARIO = [
 export type Producto = {
   marca: string;
   equipo: string;
+  tipoEquipo?: string;
   color: string;
   imei: string;        // IMEI 1 — el principal
   imei2?: string;      // IMEI 2 — opcional (equipos dual SIM)
@@ -74,6 +76,7 @@ export type ColMapInventario = {
   fechaIngreso: number;
   marca: number;
   equipo: number;
+  tipoEquipo: number;
   imei1: number;
   imei2: number;
   color: number;
@@ -110,6 +113,7 @@ export function mapearColumnasInventario(headers: string[]): ColMapInventario {
     fechaIngreso: find(["FECHA INGRESO", "F INGRESO", "INGRESO"]),
     marca: find(["MARCA"]),
     equipo: find(["EQUIPO", "MODELO", "REFERENCIA"]),
+    tipoEquipo: find(["TIPO EQUIPO"]),
     imei1: findImei(1),
     imei2: findImei(2),
     color: find(["COLOR"]),
@@ -244,6 +248,7 @@ function filaAProducto(
   return {
     marca: String(fila[cols.marca] || ""),
     equipo: String(fila[cols.equipo] || ""),
+    tipoEquipo: cols.tipoEquipo >= 0 ? String(fila[cols.tipoEquipo] || "") : undefined,
     color: cols.color >= 0 ? String(fila[cols.color] || "") : "",
     imei: cols.imei1 >= 0 ? String(fila[cols.imei1] || "") : "",
     imei2: cols.imei2 >= 0 ? String(fila[cols.imei2] || "") : undefined,
@@ -397,6 +402,7 @@ export async function crearProducto(
   datos: {
     marca: string;
     equipo: string;
+    tipoEquipo?: string;
     color?: string;
     imei1: string;
     imei2?: string;
@@ -456,6 +462,8 @@ export async function crearProducto(
     fila[cols.precioCosto] = datos.precioCosto;
   if (cols.proveedor >= 0 && datos.proveedor)
     fila[cols.proveedor] = datos.proveedor.trim();
+  if (cols.tipoEquipo >= 0 && datos.tipoEquipo)
+    fila[cols.tipoEquipo] = datos.tipoEquipo.trim();
   // fila[cols.estado] se queda en "" — vacía = disponible
 
   return agregarFila(libroId, hoja, fila);
