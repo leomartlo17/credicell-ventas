@@ -68,6 +68,31 @@ export const MEDIOS_CORE = [
   "OTRO",
 ] as const;
 
+/**
+ * Medios que el asesor PUEDE seleccionar directamente en Paso 3 y que
+ * aparecen en la UI admin de /admin/medios-pago.
+ *
+ * OTRO es estructural (columna fija en Ventas 2026 para absorber medios
+ * dinámicos fuera del set) y CAJA es saldo físico de la sede, no un medio
+ * que el cliente use — ambos se excluyen de cualquier selector.
+ *
+ * Regla firme Leonardo: "todo debe tener nombre, no OTRO". Si hace falta
+ * un medio nuevo, el admin lo crea con su nombre real (DAVIPLATA, BRE-B,
+ * etc.) y queda registrado en el catálogo para todas las ventas.
+ */
+const MEDIOS_OCULTOS = new Set(["OTRO", "CAJA"]);
+
+/**
+ * Seed inicial del catálogo MEDIOS_PAGO. No incluye OTRO ni CAJA.
+ */
+const MEDIOS_SEED = [
+  "EFECTIVO",
+  "TRANSFERENCIA",
+  "NEQUI",
+  "DATAFONO",
+  "WOMPI",
+];
+
 export type MedioCatalogo = {
   nombre: string;
   activo: boolean;
@@ -111,7 +136,7 @@ export async function asegurarHojaMedios(
   await crearHoja(libroId, HOJA_MEDIOS);
   const hoy = new Date().toISOString().slice(0, 10);
   const filas: any[][] = [HEADERS_MEDIOS];
-  for (const m of MEDIOS_CORE) {
+  for (const m of MEDIOS_SEED) {
     filas.push([m, "SI", hoy, creadoPor, "medio base (seed inicial)"]);
   }
   await escribirRango(libroId, `'${HOJA_MEDIOS}'!A1`, filas);
@@ -150,6 +175,10 @@ export async function listarMedios(
     const f = filas[i] || [];
     const nombre = String(f[0] || "").trim();
     if (!nombre) continue;
+    // Excluir medios "ocultos" (OTRO, CAJA) — aunque estén en la hoja
+    // por seeds viejos, no deben surgir en ninguna UI. Quedan como
+    // columnas estructurales de Ventas 2026 / conciliaciones.
+    if (MEDIOS_OCULTOS.has(nombre)) continue;
     const activo = String(f[1] || "").trim().toUpperCase() === "SI";
     out.push({
       nombre,
@@ -203,6 +232,13 @@ export async function crearMedio(
   }
   if (nombre.length > 30) {
     throw new Error("El nombre del medio es muy largo (máx 30 caracteres)");
+  }
+  if (MEDIOS_OCULTOS.has(nombre)) {
+    throw new Error(
+      `"${nombre}" es un nombre reservado del sistema. Usa un nombre real ` +
+        `(ej: DAVIPLATA, BRE-B, BANCOLOMBIA). Regla: todos los pagos deben ` +
+        `tener nombre real, no genérico.`
+    );
   }
   const todos = await listarMedios(libroId, creadoPor);
   if (todos.some((m) => m.nombre === nombre)) {

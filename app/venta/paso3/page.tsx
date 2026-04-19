@@ -616,6 +616,7 @@ function Paso3Pago() {
                     (m) =>
                       m.activo &&
                       m.nombre !== "CAJA" &&
+                      m.nombre !== "OTRO" &&
                       !seleccionados.some((s) => s.medio === m.nombre)
                   )
                   .map((m) => (
