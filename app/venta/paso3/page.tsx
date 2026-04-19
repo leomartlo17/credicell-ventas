@@ -66,7 +66,6 @@ function Paso3Pago() {
     porcentajeCuota: "",
     valorCuota: "",
     efectivo: "",
-    caja: "",
     transferencia: "",
     nequi: "",
     datafono: "",
@@ -142,7 +141,6 @@ function Paso3Pago() {
   const valorTotalNum = Number(form.valorTotal) || 0;
   const pagadoNum =
     (Number(form.efectivo) || 0) +
-    (Number(form.caja) || 0) +
     (Number(form.transferencia) || 0) +
     (Number(form.nequi) || 0) +
     (Number(form.datafono) || 0) +
@@ -188,7 +186,6 @@ function Paso3Pago() {
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
           valorCuota: form.valorCuota ? Number(form.valorCuota) : undefined,
           efectivo: form.efectivo ? Number(form.efectivo) : undefined,
-          caja: form.caja ? Number(form.caja) : undefined,
           transferencia: form.transferencia ? Number(form.transferencia) : undefined,
           nequi: form.nequi ? Number(form.nequi) : undefined,
           datafono: form.datafono ? Number(form.datafono) : undefined,
@@ -399,11 +396,6 @@ function Paso3Pago() {
               label="Efectivo"
               value={form.efectivo}
               onChange={(v) => actualizar("efectivo", v)}
-            />
-            <Numero
-              label="Caja"
-              value={form.caja}
-              onChange={(v) => actualizar("caja", v)}
             />
             <Numero
               label="Transferencia"
