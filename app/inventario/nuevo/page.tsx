@@ -8,6 +8,7 @@ type Catalogo = {
   marcas: string[];
   equiposPorMarca: Record<string, string[]>;
   colores: string[];
+  proveedores: string[];
 };
 
 const NUEVO = "__NUEVO__"; // valor especial para "crear nueva entrada"
@@ -20,6 +21,7 @@ export default function NuevoProducto() {
     marcas: [],
     equiposPorMarca: {},
     colores: [],
+    proveedores: [],
   });
   const [cargandoCatalogo, setCargandoCatalogo] = useState(true);
 
@@ -34,6 +36,7 @@ export default function NuevoProducto() {
     imei2: "",
     precioCosto: "",
     proveedor: "",
+    proveedorNuevo: "",
   });
 
   const [estado, setEstado] = useState<
@@ -76,6 +79,8 @@ export default function NuevoProducto() {
     form.equipo === NUEVO ? form.equipoNuevo.trim() : form.equipo;
   const colorFinal =
     form.color === NUEVO ? form.colorNuevo.trim() : form.color;
+  const proveedorFinal =
+    form.proveedor === NUEVO ? form.proveedorNuevo.trim() : form.proveedor;
 
   // Equipos que aparecen en el dropdown según la marca elegida
   const equiposDisponibles = marcaFinal
@@ -120,7 +125,7 @@ export default function NuevoProducto() {
           imei1,
           imei2: imei2 || undefined,
           precioCosto: form.precioCosto ? Number(form.precioCosto) : undefined,
-          proveedor: form.proveedor.trim() || undefined,
+          proveedor: proveedorFinal || undefined,
         }),
       });
       const data = await r.json();
@@ -152,6 +157,8 @@ export default function NuevoProducto() {
               equipoNuevo: "",
               color: colorFinal || f.color,
               colorNuevo: "",
+              proveedor: proveedorFinal || f.proveedor,
+              proveedorNuevo: "",
             }));
           }
         });
@@ -329,12 +336,28 @@ export default function NuevoProducto() {
         {/* PROVEEDOR */}
         <div>
           <label className="block text-xs text-muted mb-1">Proveedor</label>
-          <input
-            type="text"
+          <select
             value={form.proveedor}
             onChange={(e) => actualizar("proveedor", e.target.value)}
-            className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
-          />
+            className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+          >
+            <option value="">-- Sin especificar --</option>
+            {catalogo.proveedores.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+            <option value={NUEVO}>+ Nuevo proveedor...</option>
+          </select>
+          {form.proveedor === NUEVO && (
+            <input
+              type="text"
+              placeholder="Nombre del proveedor nuevo"
+              value={form.proveedorNuevo}
+              onChange={(e) => actualizar("proveedorNuevo", e.target.value)}
+              className="mt-2 w-full px-3 py-2 bg-[#0b0d12] border border-yellow-700 rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-yellow-500 text-sm"
+            />
+          )}
         </div>
       </div>
 

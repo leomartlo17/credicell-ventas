@@ -458,17 +458,19 @@ export async function leerCatalogo(libroId: string): Promise<{
   marcas: string[];
   equiposPorMarca: Record<string, string[]>;
   colores: string[];
+  proveedores: string[];
 }> {
+  const vacio = { marcas: [], equiposPorMarca: {}, colores: [], proveedores: [] };
   const hoja = await hojaInventario(libroId);
-  if (!hoja) return { marcas: [], equiposPorMarca: {}, colores: [] };
+  if (!hoja) return vacio;
 
   const filasTotales = await leerRango(libroId, `'${hoja}'!A1:Z`);
-  if (filasTotales.length < 2) return { marcas: [], equiposPorMarca: {}, colores: [] };
+  if (filasTotales.length < 2) return vacio;
 
   const { headers, dataRows } = detectarHeaderRow(filasTotales);
   const cols = mapearColumnasInventario(headers);
   if (cols.marca < 0 || cols.equipo < 0) {
-    return { marcas: [], equiposPorMarca: {}, colores: [] };
+    return vacio;
   }
 
   // Construir lista de productos (sin filtro de disponibilidad — queremos
@@ -485,8 +487,8 @@ export async function leerCatalogo(libroId: string): Promise<{
 }
 
 /**
- * Devuelve listas únicas de marcas, equipos y colores a partir de los
- * productos disponibles. Deduplicación robusta por clave normalizada
+ * Devuelve listas únicas de marcas, equipos, colores y proveedores a
+ * partir de los productos. Deduplicación robusta por clave normalizada
  * (trim + uppercase + sin acentos) para evitar mostrar "Samsung" y
  * "Samsung " como opciones distintas en el dropdown.
  */
@@ -494,12 +496,14 @@ export function extraerOpciones(productos: Producto[]): {
   marcas: string[];
   equiposPorMarca: Record<string, string[]>;
   colores: string[];
+  proveedores: string[];
 } {
   // Map<keyNormalizada, valorDisplay>
   const marcasMap = new Map<string, string>();
   // Map<marcaNormalizada, Map<equipoNorm, equipoDisplay>>
   const equiposMap = new Map<string, Map<string, string>>();
   const coloresMap = new Map<string, string>();
+  const proveedoresMap = new Map<string, string>();
 
   for (const p of productos) {
     const marcaTrim = (p.marca || "").trim();
@@ -521,6 +525,11 @@ export function extraerOpciones(productos: Producto[]): {
       const k = normalizar(colorTrim);
       if (!coloresMap.has(k)) coloresMap.set(k, colorTrim);
     }
+    const proveedorTrim = (p.proveedor || "").trim();
+    if (proveedorTrim) {
+      const k = normalizar(proveedorTrim);
+      if (!proveedoresMap.has(k)) proveedoresMap.set(k, proveedorTrim);
+    }
   }
 
   // Reindexar equiposPorMarca por el display name de la marca (no por normalizado)
@@ -534,5 +543,6 @@ export function extraerOpciones(productos: Producto[]): {
     marcas: [...marcasMap.values()].sort(),
     equiposPorMarca,
     colores: [...coloresMap.values()].sort(),
+    proveedores: [...proveedoresMap.values()].sort(),
   };
 }
