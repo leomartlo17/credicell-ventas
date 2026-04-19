@@ -144,6 +144,12 @@ export default function Dashboard() {
 
           <div className="flex flex-col items-center gap-2 mt-4">
             <a
+              href="/admin/medios-pago"
+              className="text-sm text-brand hover:text-brand-light underline font-medium"
+            >
+              Gestionar medios de pago
+            </a>
+            <a
               href="/admin/diagnostico"
               className="text-sm text-brand hover:text-brand-light underline font-medium"
             >

@@ -13,7 +13,16 @@ import {
   crearHoja,
   escribirRango,
 } from "@/lib/google-sheets";
-import { HOJA_VENTAS, MEDIOS_PAGO, MedioPago } from "@/lib/ventas";
+import { HOJA_VENTAS } from "@/lib/ventas";
+import { MEDIOS_CORE } from "@/lib/medios-pago";
+
+/**
+ * Los totales por medio en el panel de caja se calculan solo sobre los
+ * medios CORE (columnas fijas de Ventas 2026). Los medios dinámicos del
+ * catálogo se agregan al balde OTRO del resumen — pero conservan detalle
+ * granular en la pestaña DETALLE_PAGOS si alguien quiere auditar al peso.
+ */
+type MedioPago = (typeof MEDIOS_CORE)[number];
 
 /**
  * Hoja dedicada al movimiento de EFECTIVO físico de la sede. Registra
@@ -350,7 +359,7 @@ export async function resumenCaja(
     totalAbonado: 0,
     pendienteFinanciera: 0,
     contadorVentas: 0,
-    porMedio: MEDIOS_PAGO.reduce(
+    porMedio: MEDIOS_CORE.reduce(
       (acc, m) => ({ ...acc, [m]: 0 }),
       {} as Record<MedioPago, number>
     ),
@@ -409,7 +418,7 @@ export async function resumenCaja(
     const abonadoFila =
       idxTotalAbonado >= 0
         ? parseNumero(fila[idxTotalAbonado])
-        : MEDIOS_PAGO.reduce(
+        : MEDIOS_CORE.reduce(
             (acc, m) =>
               acc +
               (idxMedios[m] >= 0 ? parseNumero(fila[idxMedios[m]]) : 0),
@@ -420,7 +429,7 @@ export async function resumenCaja(
     resumen.totalVentas += total;
     resumen.totalAbonado += abonadoFila;
 
-    for (const medio of MEDIOS_PAGO) {
+    for (const medio of MEDIOS_CORE) {
       const idx = idxMedios[medio];
       if (idx >= 0) {
         resumen.porMedio[medio] += parseNumero(fila[idx]);

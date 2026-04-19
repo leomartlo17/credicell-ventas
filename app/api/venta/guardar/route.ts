@@ -1,11 +1,19 @@
 import { getServerSession } from "next-auth";
 import { authOptions, SessionConSede } from "@/lib/auth";
-import { guardarVenta } from "@/lib/ventas";
+import { guardarVenta, EntradaPago } from "@/lib/ventas";
 import { hojaInventario, buscarPorImei } from "@/lib/inventario";
 import { buscarPorCedula } from "@/lib/clientes";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+/**
+ * Schema del nuevo formato (dinámico): pagos es un array de { medio, valor }.
+ * Soporta tanto los medios core como cualquier medio nuevo del catálogo.
+ *
+ * Se mantiene compat con el formato viejo (efectivo, transferencia, etc.
+ * como campos sueltos) por si algún cliente viejo queda cacheado —
+ * internamente se convierte a pagos[].
+ */
 const schema = z.object({
   cedula: z.string().regex(/^\d{5,12}$/),
   imei: z.string().regex(/^\d{15}$/),
@@ -14,6 +22,16 @@ const schema = z.object({
   valorTotal: z.number().nonnegative(),
   porcentajeCuota: z.number().nonnegative().optional(),
   valorRecibir: z.number().nonnegative().optional(),
+  // NUEVO: desglose dinámico
+  pagos: z
+    .array(
+      z.object({
+        medio: z.string().min(1).max(30),
+        valor: z.number().nonnegative(),
+      })
+    )
+    .optional(),
+  // LEGADO: campos individuales (retro-compatibilidad)
   efectivo: z.number().nonnegative().optional(),
   caja: z.number().nonnegative().optional(),
   transferencia: z.number().nonnegative().optional(),
@@ -23,6 +41,26 @@ const schema = z.object({
   otro: z.number().nonnegative().optional(),
   observaciones: z.string().optional(),
 });
+
+/**
+ * Convierte los campos legados (efectivo, transferencia, etc.) a entradas
+ * del array pagos[]. Si el cliente ya mandó pagos[], lo usamos directo.
+ */
+function normalizarPagos(d: z.infer<typeof schema>): EntradaPago[] {
+  if (d.pagos && d.pagos.length > 0) {
+    return d.pagos.filter((p) => (p.valor || 0) > 0);
+  }
+  const legacy: EntradaPago[] = [];
+  if (d.efectivo && d.efectivo > 0) legacy.push({ medio: "EFECTIVO", valor: d.efectivo });
+  if (d.caja && d.caja > 0) legacy.push({ medio: "CAJA", valor: d.caja });
+  if (d.transferencia && d.transferencia > 0)
+    legacy.push({ medio: "TRANSFERENCIA", valor: d.transferencia });
+  if (d.nequi && d.nequi > 0) legacy.push({ medio: "NEQUI", valor: d.nequi });
+  if (d.datafono && d.datafono > 0) legacy.push({ medio: "DATAFONO", valor: d.datafono });
+  if (d.wompi && d.wompi > 0) legacy.push({ medio: "WOMPI", valor: d.wompi });
+  if (d.otro && d.otro > 0) legacy.push({ medio: "OTRO", valor: d.otro });
+  return legacy;
+}
 
 export async function POST(req: Request) {
   const session = (await getServerSession(authOptions)) as SessionConSede | null;
@@ -51,7 +89,6 @@ export async function POST(req: Request) {
   const d = parsed.data;
 
   try {
-    // Validar que el cliente exista (si no, bloqueamos la venta)
     const cliente = await buscarPorCedula(sede.libroId, d.cedula);
     if (!cliente) {
       return NextResponse.json(
@@ -83,6 +120,7 @@ export async function POST(req: Request) {
     }
 
     const asesor = session.user.name || session.user.email || "desconocido";
+    const pagos = normalizarPagos(d);
 
     const { filaVenta } = await guardarVenta(sede.libroId, hojaInv, {
       cedula: d.cedula,
@@ -96,13 +134,7 @@ export async function POST(req: Request) {
       valorTotal: d.valorTotal,
       porcentajeCuota: d.porcentajeCuota,
       valorRecibir: d.valorRecibir,
-      efectivo: d.efectivo,
-      caja: d.caja,
-      transferencia: d.transferencia,
-      nequi: d.nequi,
-      datafono: d.datafono,
-      wompi: d.wompi,
-      otro: d.otro,
+      pagos,
       observaciones: d.observaciones,
       asesor,
     });

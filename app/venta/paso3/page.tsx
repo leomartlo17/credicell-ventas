@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
 export default function Paso3Wrapper() {
   return (
@@ -40,6 +40,12 @@ type SedeInfo = {
   financieras: string[];
 };
 
+type MedioCatalogo = {
+  nombre: string;
+  activo: boolean;
+  esCore: boolean;
+};
+
 type Estado =
   | { tipo: "cargando" }
   | { tipo: "listo" }
@@ -58,19 +64,16 @@ function Paso3Pago() {
   const [producto, setProducto] = useState<Producto | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [sedeInfo, setSedeInfo] = useState<SedeInfo | null>(null);
+  const [medios, setMedios] = useState<MedioCatalogo[]>([]);
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
 
+  // montos de pago dinámicos: clave = nombre del medio (normalizado)
+  const [pagos, setPagos] = useState<Record<string, string>>({});
   const [form, setForm] = useState({
     financiera: "",
     valorTotal: "",
     porcentajeCuota: "",
     valorRecibir: "",
-    efectivo: "",
-    transferencia: "",
-    nequi: "",
-    datafono: "",
-    wompi: "",
-    otro: "",
     observaciones: "",
   });
 
@@ -89,14 +92,16 @@ function Paso3Pago() {
     }
     (async () => {
       try {
-        const [rProd, rCliente, rSede] = await Promise.all([
+        const [rProd, rCliente, rSede, rMedios] = await Promise.all([
           fetch(`/api/producto/buscar-imei?imei=${imei}`),
           fetch(`/api/cliente/buscar?cedula=${cedula}`),
           fetch(`/api/sede/info`),
+          fetch(`/api/medios-pago`),
         ]);
         const dProd = await rProd.json();
         const dCliente = await rCliente.json();
         const dSede = await rSede.json();
+        const dMedios = await rMedios.json();
 
         if (!rProd.ok) {
           setEstado({
@@ -126,6 +131,23 @@ function Paso3Pago() {
         setProducto(dProd.producto);
         setCliente(dCliente.cliente);
         setSedeInfo(dSede);
+        // Medios activos del catálogo dinámico
+        // Si falla el endpoint, no bloqueamos toda la venta — usamos lista
+        // mínima para que el asesor pueda seguir.
+        const mediosList: MedioCatalogo[] = Array.isArray(dMedios?.medios)
+          ? dMedios.medios
+          : [];
+        setMedios(
+          mediosList.length > 0
+            ? mediosList
+            : [
+                { nombre: "EFECTIVO", activo: true, esCore: true },
+                { nombre: "TRANSFERENCIA", activo: true, esCore: true },
+                { nombre: "NEQUI", activo: true, esCore: true },
+                { nombre: "DATAFONO", activo: true, esCore: true },
+                { nombre: "WOMPI", activo: true, esCore: true },
+              ]
+        );
         setEstado({ tipo: "listo" });
       } catch (e: any) {
         setEstado({ tipo: "error", mensaje: e?.message || "Error de red" });
@@ -137,28 +159,21 @@ function Paso3Pago() {
     setForm((f) => ({ ...f, [campo]: valor }));
   }
 
+  function setPago(medio: string, valor: string) {
+    setPagos((p) => ({ ...p, [medio]: valor.replace(/[^\d.]/g, "") }));
+  }
+
   // Cálculos derivados
   const valorTotalNum = Number(form.valorTotal) || 0;
-  const pagadoNum =
-    (Number(form.efectivo) || 0) +
-    (Number(form.transferencia) || 0) +
-    (Number(form.nequi) || 0) +
-    (Number(form.datafono) || 0) +
-    (Number(form.wompi) || 0) +
-    (Number(form.otro) || 0);
+  const pagadoNum = useMemo(() => {
+    return Object.values(pagos).reduce((sum, v) => sum + (Number(v) || 0), 0);
+  }, [pagos]);
   const restante = valorTotalNum - pagadoNum;
   const esContado = form.financiera.toUpperCase() === "CONTADO";
-  // % oficial de la financiera (20/25/30/35/40/45/50)
   const pctNum = Number(form.porcentajeCuota) || 0;
-  // Valor % oficial que la financiera esperaría recibir de inicial
   const valorPctOficial = pctNum > 0 ? Math.round((valorTotalNum * pctNum) / 100) : 0;
-  // Valor que el asesor realmente va a cobrar al cliente de inicial
-  // (puede ser menor al oficial si le hace descuento)
   const valorRecibirNum = Number(form.valorRecibir) || 0;
-  // Descuento = lo que NO se cobró respecto al % oficial
   const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - valorRecibirNum : 0;
-  // Diferencia entre lo que el asesor dice que va a recibir y lo que
-  // realmente desglosó en los medios de pago — debe ser 0
   const diferenciaMedios = valorRecibirNum - pagadoNum;
   const esKrediyaOPayJoy =
     form.financiera === "KREDIYA" || form.financiera === "PAYJOY";
@@ -207,6 +222,11 @@ function Paso3Pago() {
       }
     }
 
+    // Convertir pagos del state {medio: stringValor} a {medio, valor} con montos > 0
+    const pagosArray = Object.entries(pagos)
+      .map(([medio, v]) => ({ medio, valor: Number(v) || 0 }))
+      .filter((p) => p.valor > 0);
+
     setEstado({ tipo: "guardando" });
     try {
       const r = await fetch("/api/venta/guardar", {
@@ -220,12 +240,7 @@ function Paso3Pago() {
           valorTotal: valorTotalNum,
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
           valorRecibir: form.valorRecibir ? Number(form.valorRecibir) : undefined,
-          efectivo: form.efectivo ? Number(form.efectivo) : undefined,
-          transferencia: form.transferencia ? Number(form.transferencia) : undefined,
-          nequi: form.nequi ? Number(form.nequi) : undefined,
-          datafono: form.datafono ? Number(form.datafono) : undefined,
-          wompi: form.wompi ? Number(form.wompi) : undefined,
-          otro: form.otro ? Number(form.otro) : undefined,
+          pagos: pagosArray,
           observaciones: form.observaciones || undefined,
         }),
       });
@@ -291,7 +306,8 @@ function Paso3Pago() {
             </div>
           )}
           <p className="text-muted text-xs">
-            El equipo quedó marcado como VENDIDO en el inventario. Ya no aparece en Paso 2.
+            El equipo quedó marcado como VENDIDO en el inventario. El detalle del
+            pago quedó registrado fila por fila en la hoja DETALLE_PAGOS.
           </p>
         </div>
         <div className="flex gap-3">
@@ -448,37 +464,22 @@ function Paso3Pago() {
                 ? " — debe sumar el valor a recibir (cuota inicial real)"
                 : " — lo que pagó el cliente hoy"}
           </p>
+          {/* Render dinámico desde el catálogo MEDIOS_PAGO.
+              Excluimos "OTRO" del formulario — si hace falta un medio
+              que no aparece aquí, el admin debe agregarlo al catálogo
+              en /admin/medios-pago. Esto evita el agujero de control
+              del viejo campo Otro. */}
           <div className="grid grid-cols-2 gap-3">
-            <Numero
-              label="Efectivo"
-              value={form.efectivo}
-              onChange={(v) => actualizar("efectivo", v)}
-            />
-            <Numero
-              label="Transferencia"
-              value={form.transferencia}
-              onChange={(v) => actualizar("transferencia", v)}
-            />
-            <Numero
-              label="Nequi"
-              value={form.nequi}
-              onChange={(v) => actualizar("nequi", v)}
-            />
-            <Numero
-              label="Datáfono"
-              value={form.datafono}
-              onChange={(v) => actualizar("datafono", v)}
-            />
-            <Numero
-              label="Wompi"
-              value={form.wompi}
-              onChange={(v) => actualizar("wompi", v)}
-            />
-            <Numero
-              label="Otro"
-              value={form.otro}
-              onChange={(v) => actualizar("otro", v)}
-            />
+            {medios
+              .filter((m) => m.activo && m.nombre !== "OTRO" && m.nombre !== "CAJA")
+              .map((m) => (
+                <Numero
+                  key={m.nombre}
+                  label={formatearNombreMedio(m.nombre)}
+                  value={pagos[m.nombre] || ""}
+                  onChange={(v) => setPago(m.nombre, v)}
+                />
+              ))}
           </div>
 
           {valorTotalNum > 0 && (
@@ -561,6 +562,28 @@ function Paso3Pago() {
       )}
     </main>
   );
+}
+
+/**
+ * Los medios del catálogo se almacenan en UPPERCASE por consistencia,
+ * pero en la UI queremos mostrarlos más legibles: "DATAFONO" → "Datáfono",
+ * "NEQUI" → "Nequi", etc. Mapeo manual corto — para medios que no estén
+ * en el mapa, se muestra Capitalizado.
+ */
+function formatearNombreMedio(n: string): string {
+  const map: Record<string, string> = {
+    EFECTIVO: "Efectivo",
+    TRANSFERENCIA: "Transferencia",
+    NEQUI: "Nequi",
+    DATAFONO: "Datáfono",
+    WOMPI: "Wompi",
+    OTRO: "Otro",
+    DAVIPLATA: "Daviplata",
+    "BRE-B": "Bre-B",
+    PSE: "PSE",
+  };
+  if (map[n]) return map[n];
+  return n.charAt(0) + n.slice(1).toLowerCase();
 }
 
 function Numero({
