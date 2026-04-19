@@ -521,6 +521,24 @@ function Paso3Pago() {
                 <span>80%</span>
               </div>
             </div>
+
+            <div>
+              <label className="text-xs text-muted block mb-1">O ingresa la cuota inicial ($)</label>
+              <input
+                type="number"
+                min={0}
+                value={inicialKupo > 0 ? inicialKupo : ""}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  if (precioKupo > 0) {
+                    const pct = Math.min(80, Math.max(minPctKupo, Math.round(val / precioKupo * 100)));
+                    actualizar("porcentajeKupo", String(pct));
+                  }
+                }}
+                className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+                placeholder="Ej: 500000"
+              />
+            </div>
             <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted">Credicell recibe (inicial):</span>
@@ -573,6 +591,24 @@ function Paso3Pago() {
                 <span>20%</span>
                 <span>80%</span>
               </div>
+            </div>
+
+            <div>
+              <label className="text-xs text-muted block mb-1">O ingresa la cuota inicial ($)</label>
+              <input
+                type="number"
+                min={0}
+                value={inicialKupo > 0 ? inicialKupo : ""}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  if (precioKupo > 0) {
+                    const pct = Math.min(80, Math.max(20, Math.round(val / precioKupo * 100)));
+                    actualizar("porcentajeKupo", String(pct));
+                  }
+                }}
+                className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+                placeholder="Ej: 500000"
+              />
             </div>
             <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
               <div className="flex justify-between">
