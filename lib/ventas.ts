@@ -116,7 +116,13 @@ export type VentaInput = {
   financiera: string;
   valorTotal: number;
   porcentajeCuota?: number;
-  valorCuota?: number;
+  /**
+   * Solo para KREDIYA / PAYJOY. Es la cuota inicial REAL que el asesor
+   * cobra al cliente — puede ser menor al valor % oficial cuando se le
+   * hace descuento. La suma de medios de pago debe cuadrar con este valor.
+   * Descuento = (Valor venta × %) − Valor a recibir.
+   */
+  valorRecibir?: number;
   // Medios de pago individuales
   efectivo?: number;
   caja?: number;
@@ -253,7 +259,13 @@ export async function guardarVenta(
   // Cálculos específicos para financiera (si aplica)
   const pct = venta.porcentajeCuota || 0;
   const valorPctOficial = pct > 0 ? Math.round((venta.valorTotal * pct) / 100) : 0;
-  const descuento = valorPctOficial > 0 ? valorPctOficial - totalAbonado : 0;
+  // Para KREDIYA/PAYJOY el asesor manda el "valor a recibir" (cuota inicial
+  // real). Si no vino explícito, usamos el total abonado (compatibilidad).
+  const valorRecibir =
+    venta.valorRecibir !== undefined && venta.valorRecibir !== null
+      ? venta.valorRecibir
+      : totalAbonado;
+  const descuento = valorPctOficial > 0 ? valorPctOficial - valorRecibir : 0;
   // VALOR FINANCIADO = lo que la financiera le paga a Leonardo en cuotas
   // = valor venta menos el % inicial oficial
   const valorFinanciado = pct > 0 ? venta.valorTotal - valorPctOficial : 0;
@@ -272,7 +284,7 @@ export async function guardarVenta(
     venta.financiera,
     venta.valorTotal,
     venta.porcentajeCuota ?? "",
-    venta.valorCuota ?? "",
+    "",
     venta.efectivo ?? "",
     venta.caja ?? "",
     venta.transferencia ?? "",
@@ -303,8 +315,8 @@ export async function guardarVenta(
       venta.porcentajeCuota ?? "",
       valorPctOficial || "",
       valorFinanciado || "",       // VALOR FINANCIADO (lo que pagará la financiera)
-      totalAbonado,                // VALOR RECIBIDO
-      descuento,                   // DESCUENTO
+      valorRecibir,                // VALOR RECIBIDO (inicial real, la del asesor)
+      descuento,                   // DESCUENTO (valor oficial − valor recibido)
       venta.efectivo ?? "",
       venta.caja ?? "",
       venta.transferencia ?? "",

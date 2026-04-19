@@ -64,7 +64,7 @@ function Paso3Pago() {
     financiera: "",
     valorTotal: "",
     porcentajeCuota: "",
-    valorCuota: "",
+    valorRecibir: "",
     efectivo: "",
     transferencia: "",
     nequi: "",
@@ -152,8 +152,16 @@ function Paso3Pago() {
   const pctNum = Number(form.porcentajeCuota) || 0;
   // Valor % oficial que la financiera esperaría recibir de inicial
   const valorPctOficial = pctNum > 0 ? Math.round((valorTotalNum * pctNum) / 100) : 0;
-  // Descuento = lo que NO se cobró al cliente respecto al % oficial
-  const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - pagadoNum : 0;
+  // Valor que el asesor realmente va a cobrar al cliente de inicial
+  // (puede ser menor al oficial si le hace descuento)
+  const valorRecibirNum = Number(form.valorRecibir) || 0;
+  // Descuento = lo que NO se cobró respecto al % oficial
+  const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - valorRecibirNum : 0;
+  // Diferencia entre lo que el asesor dice que va a recibir y lo que
+  // realmente desglosó en los medios de pago — debe ser 0
+  const diferenciaMedios = valorRecibirNum - pagadoNum;
+  const esKrediyaOPayJoy =
+    form.financiera === "KREDIYA" || form.financiera === "PAYJOY";
 
   async function confirmar() {
     if (!form.financiera) {
@@ -171,6 +179,33 @@ function Paso3Pago() {
       });
       return;
     }
+    if (esKrediyaOPayJoy) {
+      if (!pctNum) {
+        setEstado({
+          tipo: "error",
+          mensaje: "Selecciona el % inicial que quedó con la financiera",
+        });
+        return;
+      }
+      if (!valorRecibirNum || valorRecibirNum <= 0) {
+        setEstado({
+          tipo: "error",
+          mensaje:
+            "Ingresa el valor a recibir (cuota inicial real que paga el cliente)",
+        });
+        return;
+      }
+      if (diferenciaMedios !== 0) {
+        setEstado({
+          tipo: "error",
+          mensaje:
+            diferenciaMedios > 0
+              ? `Faltan $${diferenciaMedios.toLocaleString("es-CO")} por desglosar en los medios de pago.`
+              : `Los medios de pago se pasan por $${Math.abs(diferenciaMedios).toLocaleString("es-CO")}.`,
+        });
+        return;
+      }
+    }
 
     setEstado({ tipo: "guardando" });
     try {
@@ -184,7 +219,7 @@ function Paso3Pago() {
           financiera: form.financiera,
           valorTotal: valorTotalNum,
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
-          valorCuota: form.valorCuota ? Number(form.valorCuota) : undefined,
+          valorRecibir: form.valorRecibir ? Number(form.valorRecibir) : undefined,
           efectivo: form.efectivo ? Number(form.efectivo) : undefined,
           transferencia: form.transferencia ? Number(form.transferencia) : undefined,
           nequi: form.nequi ? Number(form.nequi) : undefined,
@@ -336,7 +371,7 @@ function Paso3Pago() {
           placeholder="1500000"
         />
 
-        {!esContado && form.financiera && (
+        {esKrediyaOPayJoy && (
           <div className="bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3 space-y-3">
             <div className="text-xs text-muted font-medium">
               Datos de la financiera ({form.financiera})
@@ -369,18 +404,38 @@ function Paso3Pago() {
                   </span>
                 </div>
                 <div className="text-[10px] text-muted mt-1">
-                  Esto es lo que oficialmente la financiera espera que cobres al
-                  cliente de inicial. Abajo abajo ingresa los medios de pago que
-                  realmente recibiste.
+                  Lo que oficialmente la financiera espera que cobres al cliente.
                 </div>
               </div>
             )}
             <Numero
-              label="Valor cuota mensual (opcional)"
-              value={form.valorCuota}
-              onChange={(v) => actualizar("valorCuota", v)}
-              placeholder="ej: 120000"
+              label="Valor a recibir (cuota inicial real que paga el cliente) *"
+              value={form.valorRecibir}
+              onChange={(v) => actualizar("valorRecibir", v)}
+              placeholder={valorPctOficial ? String(valorPctOficial) : "ej: 400000"}
             />
+            {valorRecibirNum > 0 && valorPctOficial > 0 && (
+              <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2 flex justify-between">
+                <span className="text-muted">
+                  {descuentoFinanciera > 0
+                    ? "Descuento al cliente:"
+                    : descuentoFinanciera < 0
+                      ? "Pagó de más:"
+                      : "Sin descuento:"}
+                </span>
+                <span
+                  className={
+                    descuentoFinanciera === 0
+                      ? "text-green-400 font-mono"
+                      : descuentoFinanciera > 0
+                        ? "text-yellow-400 font-mono"
+                        : "text-blue-400 font-mono"
+                  }
+                >
+                  ${Math.abs(descuentoFinanciera).toLocaleString("es-CO")}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -389,7 +444,9 @@ function Paso3Pago() {
             Desglose del pago por medio
             {esContado
               ? " — debe sumar el valor total"
-              : " — suma = cuota inicial (o lo que pagó el cliente hoy)"}
+              : esKrediyaOPayJoy
+                ? " — debe sumar el valor a recibir (cuota inicial real)"
+                : " — lo que pagó el cliente hoy"}
           </p>
           <div className="grid grid-cols-2 gap-3">
             <Numero
@@ -424,54 +481,56 @@ function Paso3Pago() {
             />
           </div>
 
-          {valorTotalNum > 0 && (pagadoNum > 0 || pctNum > 0) && (
+          {valorTotalNum > 0 && (
             <div className="mt-3 p-3 bg-[#0b0d12] border border-[#2a2f3b] rounded text-xs space-y-1">
               <div className="flex justify-between text-muted">
-                <span>Valor venta (lo del admin):</span>
+                <span>Valor venta:</span>
                 <span className="text-white font-mono">${valorTotalNum.toLocaleString("es-CO")}</span>
               </div>
 
-              {!esContado && pctNum > 0 && (
-                <div className="flex justify-between text-muted">
-                  <span>Valor {pctNum}% oficial financiera:</span>
-                  <span className="text-white font-mono">${valorPctOficial.toLocaleString("es-CO")}</span>
-                </div>
+              {esKrediyaOPayJoy && pctNum > 0 && (
+                <>
+                  <div className="flex justify-between text-muted">
+                    <span>Valor {pctNum}% oficial:</span>
+                    <span className="text-white font-mono">${valorPctOficial.toLocaleString("es-CO")}</span>
+                  </div>
+                  <div className="flex justify-between text-muted">
+                    <span>Valor a recibir (inicial real):</span>
+                    <span className="text-white font-mono">${valorRecibirNum.toLocaleString("es-CO")}</span>
+                  </div>
+                </>
               )}
 
               <div className="flex justify-between text-muted">
-                <span>Recibido (suma medios pago):</span>
+                <span>Suma medios de pago:</span>
                 <span className="text-white font-mono">${pagadoNum.toLocaleString("es-CO")}</span>
               </div>
 
-              {esContado ? (
+              {esContado && (
                 <div className="flex justify-between font-medium pt-1 border-t border-[#2a2f3b]">
                   <span>Restante:</span>
                   <span className={restante === 0 ? "text-green-400" : restante > 0 ? "text-yellow-400" : "text-red-400"}>
                     ${restante.toLocaleString("es-CO")}
                   </span>
                 </div>
-              ) : pctNum > 0 ? (
+              )}
+
+              {esKrediyaOPayJoy && valorRecibirNum > 0 && (
                 <div className="flex justify-between font-medium pt-1 border-t border-[#2a2f3b]">
-                  <span>
-                    {descuentoFinanciera > 0
-                      ? "Descuento al cliente:"
-                      : descuentoFinanciera < 0
-                        ? "Pagó más del %:"
-                        : "Pagó exacto el %:"}
-                  </span>
+                  <span>Diferencia medios vs a recibir:</span>
                   <span
                     className={
-                      descuentoFinanciera === 0
-                        ? "text-green-400"
-                        : descuentoFinanciera > 0
-                          ? "text-yellow-400"
-                          : "text-blue-400"
+                      diferenciaMedios === 0
+                        ? "text-green-400 font-mono"
+                        : diferenciaMedios > 0
+                          ? "text-yellow-400 font-mono"
+                          : "text-red-400 font-mono"
                     }
                   >
-                    ${Math.abs(descuentoFinanciera).toLocaleString("es-CO")}
+                    ${diferenciaMedios.toLocaleString("es-CO")}
                   </span>
                 </div>
-              ) : null}
+              )}
             </div>
           )}
         </div>
