@@ -921,7 +921,7 @@ function Paso3Pago() {
 
       <button
         onClick={confirmar}
-        disabled={estado.tipo === "guardando"}
+        disabled={estado.tipo === "guardando" || (seleccionados.length > 0 && diferenciaMedios !== 0)}
         className="w-full mt-6 py-4 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg text-lg"
       >
         {estado.tipo === "guardando" ? "Guardando..." : "Confirmar venta"}
