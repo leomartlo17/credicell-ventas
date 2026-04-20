@@ -523,12 +523,13 @@ function Paso3Pago() {
             </div>
 
             <div>
-              <label className="text-xs text-muted block mb-1">O ingresa la cuota inicial ($)</label>
+              <label className="text-xs text-muted block mb-1">Cuota inicial $ (escribe y haz clic fuera)</label>
               <input
                 type="number"
                 min={0}
-                value={inicialKupo > 0 ? inicialKupo : ""}
-                onChange={(e) => {
+                key={pctKupoNum}
+                defaultValue={inicialKupo > 0 ? inicialKupo : ""}
+                onBlur={(e) => {
                   const val = parseInt(e.target.value) || 0;
                   if (precioKupo > 0) {
                     const pct = Math.min(80, Math.max(minPctKupo, Math.round(val / precioKupo * 100)));
@@ -598,8 +599,9 @@ function Paso3Pago() {
               <input
                 type="number"
                 min={0}
-                value={inicialKupo > 0 ? inicialKupo : ""}
-                onChange={(e) => {
+                key={pctKupoNum}
+                defaultValue={inicialKupo > 0 ? inicialKupo : ""}
+                onBlur={(e) => {
                   const val = parseInt(e.target.value) || 0;
                   if (precioKupo > 0) {
                     const pct = Math.min(80, Math.max(20, Math.round(val / precioKupo * 100)));
