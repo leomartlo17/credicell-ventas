@@ -49,7 +49,8 @@ const HEADERS_DETALLE_PAGOS = [
 
 /**
  * Medios "core" — los que tienen columna dedicada en Ventas 2026 y
- * hojas de conciliación (KREDIYA/PAYJOY). Son los que ya existían antes
+ * hojas de conciliación (KREDIYA, ADELANTOS, +KUPO, BOGOTA, etc.). Son
+ * los que ya existían antes
  * de hacer el catálogo dinámico. Si agregas un medio NUEVO al catálogo,
  * caerá agrupado bajo "OTRO" en el resumen de Ventas 2026 — pero queda
  * desglosado fila-por-fila en DETALLE_PAGOS.

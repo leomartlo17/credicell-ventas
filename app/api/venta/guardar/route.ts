@@ -51,6 +51,18 @@ const schema = z.object({
   pagoComisionAlcanos: z.string().optional(),
   comisionAlcanos: z.number().optional(),
   precioAlcanos: z.number().optional(),
+  // Monto asignado a la financiera principal (si hay co-financiación).
+  // Si no viene, se asume que la principal cubre el valorTotal completo.
+  valorFinancieraPrincipal: z.number().nonnegative().optional(),
+  // Co-financiación: una segunda financiera que cubre el resto del valor.
+  coFinanciacion: z
+    .object({
+      financiera: z.string().min(1),
+      valor: z.number().positive(),
+      porcentajeCuota: z.number().nonnegative().optional(),
+      valorRecibir: z.number().nonnegative().optional(),
+    })
+    .optional(),
 });
 
 /**
@@ -158,6 +170,8 @@ export async function POST(req: Request) {
       pagoComisionAlcanos: d.pagoComisionAlcanos,
       comisionAlcanos: d.comisionAlcanos,
       precioAlcanos: d.precioAlcanos,
+      valorFinancieraPrincipal: d.valorFinancieraPrincipal,
+      coFinanciacion: d.coFinanciacion,
       asesor,
     });
 

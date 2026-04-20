@@ -16,6 +16,12 @@ export type Sede = {
   asesores: string[]; // emails de Google
   admins: string[]; // emails de admins que autorizan valores (J.A, J.D)
   financieras: string[]; // opciones de financiera para el Paso 3 Pago
+  /**
+   * Nombre con el que aparece la tienda en la app externa de Cartera.
+   * Diferente al nombre de la sede porque Cartera tiene su propia
+   * convención (ej: San Esteban → "CREDICELL NEIVA").
+   */
+  nombreEnCartera: string;
 };
 
 export const SEDES: Sede[] = [
@@ -23,15 +29,17 @@ export const SEDES: Sede[] = [
     id: "san-esteban",
     nombre: "CREDICELL San Esteban",
     libroId: process.env.LIBRO_SAN_ESTEBAN || "",
+    nombreEnCartera: "CREDICELL NEIVA",
     asesores: [
       "leomartlo17@gmail.com",
     ],
     admins: [
       "leomartlo17@gmail.com",
     ],
+    // ADELANTOS = PAYJOY (misma empresa, nombre comercial en Colombia).
+    // No duplicar — se maneja internamente con alias en lib/ventas.ts.
     financieras: [
       "KREDIYA",
-      "PAYJOY",
       "ADELANTOS",
       "+KUPO",
       "BOGOTA",

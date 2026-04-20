@@ -96,6 +96,12 @@ function Paso3Pago() {
     cuotaRenting: "",
     valorRecibir: "",
     observaciones: "",
+    // Co-financiación (segunda financiera). Si usaCoFinanciacion=false, se ignora.
+    usaCoFinanciacion: false,
+    cofFinanciera: "",           // financiera secundaria
+    cofValor: "",                // monto asignado a la secundaria
+    cofPorcentajeCuota: "",      // solo si secundaria es kredit-cuota
+    cofValorRecibir: "",         // cuota inicial real cobrada (kredit-cuota)
   });
 
   const esAdmin = Boolean((session as any)?.esAdmin);
@@ -250,8 +256,15 @@ function Paso3Pago() {
   const valorRecibirNum = Number(form.valorRecibir) || 0;
   const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - valorRecibirNum : 0;
   const diferenciaMedios = valorRecibirNum - pagadoNum;
-  const esKrediyaOPayJoy =
-    form.financiera === "KREDIYA" || form.financiera === "PAYJOY";
+  // KREDIYA, ADELANTOS (= PAYJOY) y BOGOTA usan el flujo de cuota inicial +
+  // descuento + financiado. Mantengo el alias "PAYJOY" por compatibilidad.
+  const esKrediyaOAdelantos =
+    form.financiera === "KREDIYA" ||
+    form.financiera === "ADELANTOS" ||
+    form.financiera === "PAYJOY" ||
+    form.financiera === "BOGOTA";
+  // Alias para no romper referencias existentes en este archivo.
+  const esKrediyaOPayJoy = esKrediyaOAdelantos;
 
   // +Kupo con iPhone: flujo especial con % de inicial
   const esKupoIphone =
@@ -307,6 +320,37 @@ function Paso3Pago() {
   const comisionAlcanosFinanciada = precioAlcanosFinanciado - valorTotalNum;
   const diferenciaAlcanos = esAlcanos && form.pagoComisionAlcanos === "efectivo" ? comisionAlcanosEfectivo - pagadoNum : 0;
 
+  // ====== Co-financiación (segunda financiera) ======
+  // Opciones del dropdown de secundaria: todas las financieras menos la
+  // principal y menos "Contado" (co-financiación implica crédito).
+  const financierasSecundariasDisponibles = (sedeInfo?.financieras || [])
+    .filter((f) => f !== form.financiera && f.toUpperCase() !== "CONTADO");
+  const cofValorNum = Number(form.cofValor) || 0;
+  const cofPctNum = Number(form.cofPorcentajeCuota) || 0;
+  const cofValorRecibirNum = Number(form.cofValorRecibir) || 0;
+  // Si hay co-financiación activa, el monto de la principal = valor total - cof.
+  const valorPrincipalNum = form.usaCoFinanciacion && cofValorNum > 0
+    ? Math.max(0, valorTotalNum - cofValorNum)
+    : valorTotalNum;
+  // Secundarias tipo kredit-cuota (piden cuota inicial)
+  const cofEsKreditCuota =
+    form.cofFinanciera === "KREDIYA" ||
+    form.cofFinanciera === "ADELANTOS" ||
+    form.cofFinanciera === "+KUPO" ||
+    form.cofFinanciera === "BOGOTA";
+  // Validación: si usa co-financiación, debe tener financiera y monto > 0 y <= valor total.
+  const cofInvalido =
+    form.usaCoFinanciacion && (!form.cofFinanciera || cofValorNum <= 0 || cofValorNum >= valorTotalNum);
+  const cofError = form.usaCoFinanciacion
+    ? !form.cofFinanciera
+      ? "Elige la segunda financiera"
+      : cofValorNum <= 0
+        ? "Ingresa el monto que cubre la segunda financiera"
+        : cofValorNum >= valorTotalNum
+          ? "El monto de la segunda no puede ser igual o mayor al valor total"
+          : ""
+    : "";
+
   async function confirmar() {
     if (!form.financiera) {
       setEstado({ tipo: "error", mensaje: "Selecciona la financiera" });
@@ -321,6 +365,11 @@ function Paso3Pago() {
         tipo: "error",
         mensaje: `En venta de Contado la suma de medios de pago debe cuadrar exacto con el total. Faltan $${restante.toLocaleString("es-CO")}.`,
       });
+      return;
+    }
+    // Validación de co-financiación (si está activa)
+    if (cofInvalido) {
+      setEstado({ tipo: "error", mensaje: cofError });
       return;
     }
     if (esKupoIphone) {
@@ -448,6 +497,18 @@ function Paso3Pago() {
             pagoComisionAlcanos: esAlcanos ? form.pagoComisionAlcanos : undefined,
             comisionAlcanos: esAlcanos ? comisionAlcanosEfectivo : undefined,
             precioAlcanos: esAlcanos && form.pagoComisionAlcanos === "alcanos" ? precioAlcanosFinanciado : undefined,
+            // Co-financiación (si está activa)
+            valorFinancieraPrincipal: form.usaCoFinanciacion && cofValorNum > 0
+              ? valorPrincipalNum
+              : undefined,
+            coFinanciacion: form.usaCoFinanciacion && cofValorNum > 0 && form.cofFinanciera
+              ? {
+                  financiera: form.cofFinanciera,
+                  valor: cofValorNum,
+                  porcentajeCuota: cofEsKreditCuota && cofPctNum > 0 ? cofPctNum : undefined,
+                  valorRecibir: cofEsKreditCuota && cofValorRecibirNum > 0 ? cofValorRecibirNum : undefined,
+                }
+              : undefined,
         }),
       });
       const data = await r.json();
@@ -1311,11 +1372,95 @@ function Paso3Pago() {
             className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
           />
         </div>
+
+        {/* Co-financiación: solo si no es Contado y hay financiera principal elegida */}
+        {!esContado && form.financiera && (
+          <div className="border-t border-[#2a2f3b] pt-4 mt-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.usaCoFinanciacion}
+                onChange={(e) => actualizar("usaCoFinanciacion", e.target.checked as any)}
+                className="w-4 h-4 accent-brand"
+              />
+              <span className="text-sm text-white">
+                ¿El cliente llevó con DOS financieras?
+              </span>
+            </label>
+            <p className="text-xs text-muted mt-1 ml-6">
+              La financiera principal (<strong>{form.financiera}</strong>) cubrirá la mayor parte.
+              La segunda cubre el resto y se registra en su propia hoja.
+            </p>
+
+            {form.usaCoFinanciacion && (
+              <div className="mt-3 space-y-3 ml-6 border-l-2 border-brand pl-4">
+                <div>
+                  <label className="block text-xs text-muted mb-1">Segunda financiera</label>
+                  <select
+                    value={form.cofFinanciera}
+                    onChange={(e) => actualizar("cofFinanciera", e.target.value)}
+                    className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white text-sm"
+                  >
+                    <option value="">-- Elige --</option>
+                    {financierasSecundariasDisponibles.map((f) => (
+                      <option key={f} value={f}>{f}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <Numero
+                  label={`Monto que cubre ${form.cofFinanciera || "la segunda"} (de $${valorTotalNum.toLocaleString("es-CO")} total)`}
+                  value={form.cofValor}
+                  onChange={(v) => actualizar("cofValor", v)}
+                  placeholder="Ej: 500000"
+                />
+
+                {cofValorNum > 0 && valorPrincipalNum > 0 && (
+                  <div className="text-xs bg-[#0b0d12] rounded-lg p-3 border border-[#2a2f3b] font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-muted">{form.financiera} cubre:</span>
+                      <span className="text-white">${valorPrincipalNum.toLocaleString("es-CO")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted">{form.cofFinanciera || "Segunda"} cubre:</span>
+                      <span className="text-white">${cofValorNum.toLocaleString("es-CO")}</span>
+                    </div>
+                    <div className="flex justify-between border-t border-[#2a2f3b] mt-1 pt-1">
+                      <span className="text-muted">Total:</span>
+                      <span className="text-brand">${valorTotalNum.toLocaleString("es-CO")}</span>
+                    </div>
+                  </div>
+                )}
+
+                {cofEsKreditCuota && (
+                  <>
+                    <Numero
+                      label={`% cuota inicial en ${form.cofFinanciera}`}
+                      value={form.cofPorcentajeCuota}
+                      onChange={(v) => actualizar("cofPorcentajeCuota", v)}
+                      placeholder="Ej: 30"
+                    />
+                    <Numero
+                      label={`Valor recibido (cuota inicial real) de ${form.cofFinanciera}`}
+                      value={form.cofValorRecibir}
+                      onChange={(v) => actualizar("cofValorRecibir", v)}
+                      placeholder="Si hubo descuento puede ser menor"
+                    />
+                  </>
+                )}
+
+                {cofError && (
+                  <div className="text-xs text-red-400">{cofError}</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <button
         onClick={confirmar}
-        disabled={estado.tipo === "guardando" || (esAddi && !form.pagoComisionAddi) || (esAddi && form.pagoComisionAddi === "efectivo" && diferenciaAddi !== 0) || (esSupay && !form.pagoComisionSupay) || (esSupay && form.pagoComisionSupay === "efectivo" && diferenciaSupay !== 0) || (!esAddi && !esSupay && seleccionados.length > 0 && diferenciaMedios !== 0)}
+        disabled={estado.tipo === "guardando" || (esAddi && !form.pagoComisionAddi) || (esAddi && form.pagoComisionAddi === "efectivo" && diferenciaAddi !== 0) || (esSupay && !form.pagoComisionSupay) || (esSupay && form.pagoComisionSupay === "efectivo" && diferenciaSupay !== 0) || (!esAddi && !esSupay && seleccionados.length > 0 && diferenciaMedios !== 0) || cofInvalido}
         className="w-full mt-6 py-4 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg text-lg"
       >
         {estado.tipo === "guardando" ? "Guardando..." : "Confirmar venta"}
