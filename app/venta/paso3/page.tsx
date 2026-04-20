@@ -873,7 +873,7 @@ function Paso3Pago() {
               </div>
             )}
           </div>
-        
+        )}
         <div className="pt-2 border-t border-[#2a2f3b] mt-4">
           <p className="text-xs text-muted mb-2 font-medium">
             Desglose del pago por medio
