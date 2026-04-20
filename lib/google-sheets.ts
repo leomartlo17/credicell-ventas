@@ -59,7 +59,7 @@ export async function agregarFila(
   const res = await sheets.spreadsheets.values.append({
     spreadsheetId,
     range: `${hoja}!A:A`,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: { values: [valores] }
   });
@@ -80,7 +80,7 @@ export async function actualizarCelda(
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: rangoA1,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     requestBody: { values: [[valor]] }
   });
 }
@@ -139,7 +139,7 @@ export async function escribirRango(
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: rangoA1,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: "RAW",
     requestBody: { values: filas },
   });
 }
