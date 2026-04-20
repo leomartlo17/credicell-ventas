@@ -69,7 +69,7 @@ function Paso3Pago() {
   const [medios, setMedios] = useState<MedioCatalogo[]>([]);
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
 
-  // Medios seleccionados en esta venta. Orden importa (como los agregó
+  // Medios seleccionados en esta venta. Orden importa (como los agregÃ³
   // el asesor). Cada uno tiene su monto. Si el asesor quita un medio,
   // desaparece del arreglo.
   const [seleccionados, setSeleccionados] = useState<
@@ -103,7 +103,7 @@ function Paso3Pago() {
     if (!cedula || !imei) {
       setEstado({
         tipo: "error",
-        mensaje: "Faltan datos de la venta (cédula o IMEI). Vuelve al Paso 1.",
+        mensaje: "Faltan datos de la venta (cÃ©dula o IMEI). Vuelve al Paso 1.",
       });
       return;
     }
@@ -148,9 +148,9 @@ function Paso3Pago() {
         setProducto(dProd.producto);
         setCliente(dCliente.cliente);
         setSedeInfo(dSede);
-        // Medios activos del catálogo dinámico
-        // Si falla el endpoint, no bloqueamos toda la venta — usamos lista
-        // mínima para que el asesor pueda seguir.
+        // Medios activos del catÃ¡logo dinÃ¡mico
+        // Si falla el endpoint, no bloqueamos toda la venta â usamos lista
+        // mÃ­nima para que el asesor pueda seguir.
         const mediosList: MedioCatalogo[] = Array.isArray(dMedios?.medios)
           ? dMedios.medios
           : [];
@@ -178,7 +178,7 @@ function Paso3Pago() {
 
   function agregarMedio(medio: string) {
     setSeleccionados((s) => {
-      if (s.some((x) => x.medio === medio)) return s; // ya está
+      if (s.some((x) => x.medio === medio)) return s; // ya estÃ¡
       return [...s, { medio, valor: "" }];
     });
     setMostrarSelector(false);
@@ -198,7 +198,7 @@ function Paso3Pago() {
   async function crearNuevoMedio() {
     const nombre = nuevoMedioNombre.trim();
     if (nombre.length < 2) {
-      setErrorNuevo("Mínimo 2 caracteres");
+      setErrorNuevo("MÃ­nimo 2 caracteres");
       return;
     }
     setGuardandoNuevo(true);
@@ -214,7 +214,7 @@ function Paso3Pago() {
         setErrorNuevo(d.error || "Error al crear");
         return;
       }
-      // El medio se agregó al catálogo — meterlo en la lista local y
+      // El medio se agregÃ³ al catÃ¡logo â meterlo en la lista local y
       // seleccionarlo para esta venta inmediatamente.
       const nuevo: MedioCatalogo = {
         nombre: d.medio.nombre,
@@ -232,7 +232,7 @@ function Paso3Pago() {
     }
   }
 
-  // Cálculos derivados
+  // CÃ¡lculos derivados
   const valorTotalNum = Number(form.valorTotal) || 0;
   const pagadoNum = useMemo(() => {
     return seleccionados.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
@@ -280,14 +280,14 @@ function Paso3Pago() {
       if (pctKupoNum < minPctKupo) {
         setEstado({
           tipo: "error",
-          mensaje: `Porcentaje mínimo para este precio: ${minPctKupo}% (+Kupo financia máx $3.000.000)`,
+          mensaje: `Porcentaje mÃ­nimo para este precio: ${minPctKupo}% (+Kupo financia mÃ¡x $3.000.000)`,
         });
         return;
       }
       if (financiadoKupo > 3_000_000) {
         setEstado({
           tipo: "error",
-          mensaje: `+Kupo financia máximo $3.000.000. Sube el porcentaje inicial.`,
+          mensaje: `+Kupo financia mÃ¡ximo $3.000.000. Sube el porcentaje inicial.`,
         });
         return;
       }
@@ -295,7 +295,7 @@ function Paso3Pago() {
       if (!pctNum) {
         setEstado({
           tipo: "error",
-          mensaje: "Selecciona el % inicial que quedó con la financiera",
+          mensaje: "Selecciona el % inicial que quedÃ³ con la financiera",
         });
         return;
       }
@@ -319,7 +319,7 @@ function Paso3Pago() {
       }
     }
 
-    // Convertir selección del asesor a pagos numéricos > 0
+    // Convertir selecciÃ³n del asesor a pagos numÃ©ricos > 0
     const pagosArray = seleccionados
       .map((s) => ({ medio: s.medio, valor: Number(s.valor) || 0 }))
       .filter((p) => p.valor > 0);
@@ -365,7 +365,7 @@ function Paso3Pago() {
   if (status === "loading" || !session) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <p className="text-muted text-sm">Cargando sesión...</p>
+        <p className="text-muted text-sm">Cargando sesiÃ³n...</p>
       </main>
     );
   }
@@ -388,18 +388,18 @@ function Paso3Pago() {
           onClick={() => router.push("/venta/paso1")}
           className="px-4 py-2 bg-[#141821] border border-[#2a2f3b] text-white rounded-lg"
         >
-          ← Volver al Paso 1
+          â Volver al Paso 1
         </button>
       </main>
     );
   }
 
-  // Pantalla de éxito
+  // Pantalla de Ã©xito
   if (estado.tipo === "ok") {
     return (
       <main className="min-h-screen p-6 max-w-lg mx-auto">
         <div className="bg-[#141821] border border-green-800 rounded-xl p-6 mb-6">
-          <div className="text-green-400 text-xs mb-2">✓ VENTA GUARDADA</div>
+          <div className="text-green-400 text-xs mb-2">â VENTA GUARDADA</div>
           <h1 className="text-2xl font-bold mb-4">
             Fila {estado.filaVenta} en hoja Ventas 2026
           </h1>
@@ -413,8 +413,8 @@ function Paso3Pago() {
             </div>
           )}
           <p className="text-muted text-xs">
-            El equipo quedó marcado como VENDIDO en el inventario. El detalle del
-            pago quedó registrado fila por fila en la hoja DETALLE_PAGOS.
+            El equipo quedÃ³ marcado como VENDIDO en el inventario. El detalle del
+            pago quedÃ³ registrado fila por fila en la hoja DETALLE_PAGOS.
           </p>
         </div>
         <div className="flex gap-3">
@@ -443,12 +443,12 @@ function Paso3Pago() {
           onClick={() => router.push(`/venta/paso2?cedula=${cedula}`)}
           className="text-muted text-sm hover:text-white"
         >
-          ← Paso 2
+          â Paso 2
         </button>
         <div className="text-muted text-xs">CC: {cedula}</div>
       </div>
 
-      <h1 className="text-2xl font-bold mb-1">Paso 3 · Pago</h1>
+      <h1 className="text-2xl font-bold mb-1">Paso 3 Â· Pago</h1>
       <p className="text-muted text-sm mb-6">
         Financiera, valor, y desglose del pago.
       </p>
@@ -458,11 +458,11 @@ function Paso3Pago() {
         <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4 mb-6 text-sm space-y-1">
           <div className="text-xs text-muted">CLIENTE</div>
           <div className="font-medium">{cliente.nombre}</div>
-          <div className="text-muted mb-3">CC {cliente.cedula}{cliente.telefono ? ` · Tel ${cliente.telefono}` : ""}</div>
+          <div className="text-muted mb-3">CC {cliente.cedula}{cliente.telefono ? ` Â· Tel ${cliente.telefono}` : ""}</div>
           <div className="text-xs text-muted">PRODUCTO</div>
           <div className="font-medium">
-            {producto.marca} · {producto.equipo}
-            {producto.color && ` · ${producto.color}`}
+            {producto.marca} Â· {producto.equipo}
+            {producto.color && ` Â· ${producto.color}`}
           </div>
           <div className="font-mono text-xs text-muted">IMEI {producto.imei}</div>
         </div>
@@ -498,26 +498,26 @@ function Paso3Pago() {
         {esKupoIphone && valorTotalNum > 0 && (
           <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
             <div className="text-xs text-brand font-bold uppercase tracking-wider">
-              +Kupo · iPhone — Flujo especial
+              +Kupo Â· iPhone â Flujo especial
             </div>
             <div>
               <div className="flex justify-between items-baseline mb-1">
                 <label className="text-xs text-muted">
                   % que recibe Credicell (inicial)
                 </label>
-                <span className="text-brand font-bold">{pctKupoNum}%</span>
+                <span className="text-brand font-bold">{Number.isInteger(pctKupoNum) ? pctKupoNum : pctKupoNum.toFixed(2)}%</span>
               </div>
               <input
                 type="range"
                 min={minPctKupo}
                 max={80}
                 step={1}
-                value={pctKupoNum}
+                value={Math.round(pctKupoNum)}
                 onChange={(e) => actualizar("porcentajeKupo", e.target.value)}
                 className="w-full accent-brand"
               />
               <div className="flex justify-between text-xs text-muted mt-1">
-                <span>Mín {minPctKupo}%</span>
+                <span>MÃ­n {minPctKupo}%</span>
                 <span>80%</span>
               </div>
             </div>
@@ -532,7 +532,7 @@ function Paso3Pago() {
                 onBlur={(e) => {
                   const val = parseInt(e.target.value) || 0;
                   if (precioKupo > 0) {
-                    const pct = Math.min(80, Math.max(minPctKupo, Math.round(val / precioKupo * 100)));
+                    const pct = Math.min(80, Math.max(minPctKupo, Math.round(val / precioKupo * 10000) / 100));
                     actualizar("porcentajeKupo", String(pct));
                   }
                 }}
@@ -553,10 +553,10 @@ function Paso3Pago() {
               </div>
               {financiadoKupo > 3_000_000 ? (
                 <p className="text-red-400 text-xs">
-                  +Kupo financia máximo $3.000.000. Sube el porcentaje.
+                  +Kupo financia mÃ¡ximo $3.000.000. Sube el porcentaje.
                 </p>
               ) : (
-                <p className="text-green-400 text-xs">Financiación válida</p>
+                <p className="text-green-400 text-xs">FinanciaciÃ³n vÃ¡lida</p>
               )}
             </div>
             <p className="text-xs text-muted">
@@ -570,21 +570,21 @@ function Paso3Pago() {
         {esKupoAndroid && valorTotalNum > 0 && (
           <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
             <div className="text-xs text-brand font-bold uppercase tracking-wider">
-              +Kupo · Android / Otro
+              +Kupo Â· Android / Otro
             </div>
             <div>
               <div className="flex justify-between items-baseline mb-1">
                 <label className="text-xs text-muted">
                   % de cuota inicial
                 </label>
-                <span className="text-brand font-bold">{pctKupoNum}%</span>
+                <span className="text-brand font-bold">{Number.isInteger(pctKupoNum) ? pctKupoNum : pctKupoNum.toFixed(2)}%</span>
               </div>
               <input
                 type="range"
                 min={20}
                 max={80}
                 step={1}
-                value={pctKupoNum}
+                value={Math.round(pctKupoNum)}
                 onChange={(e) => actualizar("porcentajeKupo", e.target.value)}
                 className="w-full accent-brand"
               />
@@ -604,7 +604,7 @@ function Paso3Pago() {
                 onBlur={(e) => {
                   const val = parseInt(e.target.value) || 0;
                   if (precioKupo > 0) {
-                    const pct = Math.min(80, Math.max(20, Math.round(val / precioKupo * 100)));
+                    const pct = Math.min(80, Math.max(20, Math.round(val / precioKupo * 10000) / 100));
                     actualizar("porcentajeKupo", String(pct));
                   }
                 }}
@@ -614,7 +614,7 @@ function Paso3Pago() {
             </div>
             <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted">Cuota inicial ({pctKupoNum}%):</span>
+                <span className="text-muted">Cuota inicial ({Number.isInteger(pctKupoNum) ? pctKupoNum : pctKupoNum.toFixed(2)}%):</span>
                 <span className="font-bold text-white">${inicialKupo.toLocaleString("es-CO")}</span>
               </div>
               <div className="flex justify-between">
@@ -625,10 +625,10 @@ function Paso3Pago() {
               </div>
               {financiadoKupo > 3_000_000 ? (
                 <p className="text-red-400 text-xs">
-                  +Kupo financia máximo $3.000.000. Sube el porcentaje.
+                  +Kupo financia mÃ¡ximo $3.000.000. Sube el porcentaje.
                 </p>
               ) : (
-                <p className="text-green-400 text-xs">Financiación válida</p>
+                <p className="text-green-400 text-xs">FinanciaciÃ³n vÃ¡lida</p>
               )}
             </div>
             <p className="text-xs text-muted">
@@ -644,7 +644,7 @@ function Paso3Pago() {
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">
-                % inicial (la que quedó con la financiera)
+                % inicial (la que quedÃ³ con la financiera)
               </label>
               <select
                 value={form.porcentajeCuota}
@@ -686,7 +686,7 @@ function Paso3Pago() {
                   {descuentoFinanciera > 0
                     ? "Descuento al cliente:"
                     : descuentoFinanciera < 0
-                      ? "Pagó de más:"
+                      ? "PagÃ³ de mÃ¡s:"
                       : "Sin descuento:"}
                 </span>
                 <span
@@ -709,22 +709,22 @@ function Paso3Pago() {
           <p className="text-xs text-muted mb-2 font-medium">
             Desglose del pago por medio
             {esContado
-              ? " — debe sumar el valor total"
+              ? " â debe sumar el valor total"
               : esKrediyaOPayJoy
-                ? " — debe sumar el valor a recibir (cuota inicial real)"
+                ? " â debe sumar el valor a recibir (cuota inicial real)"
                 : esKupoIphone
-                  ? ` — debe sumar el inicial ($${inicialKupo.toLocaleString("es-CO")})`
-                  : " — lo que pagó el cliente hoy"}
+                  ? ` â debe sumar el inicial ($${inicialKupo.toLocaleString("es-CO")})`
+                  : " â lo que pagÃ³ el cliente hoy"}
           </p>
           {/* UX: el asesor CONSTRUYE el desglose agregando medios uno
               por uno. Evita el ruido visual de mostrar todos los medios
-              cuando típicamente solo se usa 1-2. Admins pueden crear
+              cuando tÃ­picamente solo se usa 1-2. Admins pueden crear
               medios nuevos inline sin salir del Paso 3.
-              CAJA queda excluido del selector — es un saldo físico de la
+              CAJA queda excluido del selector â es un saldo fÃ­sico de la
               sede, no un medio de pago que el cliente use. */}
           {seleccionados.length === 0 && !mostrarSelector && (
             <p className="text-xs text-muted italic mb-3">
-              Aún no has agregado medios. Presiona "+ Agregar medio" para empezar.
+              AÃºn no has agregado medios. Presiona "+ Agregar medio" para empezar.
             </p>
           )}
 
@@ -752,7 +752,7 @@ function Paso3Pago() {
                   aria-label={`Quitar ${s.medio}`}
                   className="w-7 h-7 text-muted hover:text-red-400 text-lg leading-none"
                 >
-                  ×
+                  Ã
                 </button>
               </div>
             ))}
@@ -810,7 +810,7 @@ function Paso3Pago() {
               </div>
 
               {/* Admin puede crear un medio nuevo sin salir del Paso 3.
-                  Se agrega al catálogo y se selecciona automáticamente
+                  Se agrega al catÃ¡logo y se selecciona automÃ¡ticamente
                   para esta venta. */}
               {esAdmin && !creandoNuevo && (
                 <button
@@ -828,7 +828,7 @@ function Paso3Pago() {
               {esAdmin && creandoNuevo && (
                 <div className="mt-3 pt-3 border-t border-[#2a2f3b] space-y-2">
                   <p className="text-xs text-muted">
-                    Nuevo medio (quedará en el catálogo y disponible para
+                    Nuevo medio (quedarÃ¡ en el catÃ¡logo y disponible para
                     todas las ventas)
                   </p>
                   <input
@@ -950,9 +950,9 @@ function Paso3Pago() {
 }
 
 /**
- * Los medios del catálogo se almacenan en UPPERCASE por consistencia,
- * pero en la UI queremos mostrarlos más legibles: "DATAFONO" → "Datáfono",
- * "NEQUI" → "Nequi", etc. Mapeo manual corto — para medios que no estén
+ * Los medios del catÃ¡logo se almacenan en UPPERCASE por consistencia,
+ * pero en la UI queremos mostrarlos mÃ¡s legibles: "DATAFONO" â "DatÃ¡fono",
+ * "NEQUI" â "Nequi", etc. Mapeo manual corto â para medios que no estÃ©n
  * en el mapa, se muestra Capitalizado.
  */
 function formatearNombreMedio(n: string): string {
@@ -960,7 +960,7 @@ function formatearNombreMedio(n: string): string {
     EFECTIVO: "Efectivo",
     TRANSFERENCIA: "Transferencia",
     NEQUI: "Nequi",
-    DATAFONO: "Datáfono",
+    DATAFONO: "DatÃ¡fono",
     WOMPI: "Wompi",
     OTRO: "Otro",
     DAVIPLATA: "Daviplata",
