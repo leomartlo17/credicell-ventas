@@ -509,18 +509,23 @@ function Paso3Pago() {
               +Kupo · iPhone — Flujo especial
             </div>
             <div>
-              <label className="block text-xs text-muted mb-1">
-                % inicial (la que quedó con la financiera)
-              </label>
-              <select value={form.porcentajeKupo}
+              <div className="flex justify-between items-baseline mb-1">
+                <label className="text-xs text-muted">% de cuota inicial</label>
+                <span className="text-brand font-bold">{Number.isInteger(pctKupoReal) ? pctKupoReal : pctKupoReal.toFixed(2)}%</span>
+              </div>
+              <input
+                type="range"
+                min={minPctKupo}
+                max={80}
+                step={1}
+                value={Math.round(pctKupoReal)}
                 onChange={(e) => { actualizar("porcentajeKupo", e.target.value); actualizar("cuotaKupo", ""); }}
-                className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
-              >
-                <option value="">-- Seleccionar --</option>
-                {[20, 25, 30, 35, 40, 45, 50].map((p) => (
-                  <option key={p} value={p}>{p}%</option>
-                ))}
-              </select>
+                className="w-full accent-brand"
+              />
+              <div className="flex justify-between text-xs text-muted mt-1">
+                <span>Mín {minPctKupo}%</span>
+                <span>80%</span>
+              </div>
             </div>
             <div>
               <label className="text-xs text-muted block mb-1">O ingresa la cuota inicial ($)</label>
@@ -565,23 +570,18 @@ function Paso3Pago() {
               +Kupo · Android / Otro
             </div>
             <div>
-              <div className="flex justify-between items-baseline mb-1">
-                <label className="text-xs text-muted">% de cuota inicial</label>
-                <span className="text-brand font-bold">{Number.isInteger(pctKupoReal) ? pctKupoReal : pctKupoReal.toFixed(2)}%</span>
-              </div>
-              <input
-                type="range"
-                min={20}
-                max={80}
-                step={1}
-                value={Math.round(pctKupoReal)}
+              <label className="block text-xs text-muted mb-1">
+                % inicial (la que quedó con la financiera)
+              </label>
+              <select value={form.porcentajeKupo}
                 onChange={(e) => { actualizar("porcentajeKupo", e.target.value); actualizar("cuotaKupo", ""); }}
-                className="w-full accent-brand"
-              />
-              <div className="flex justify-between text-xs text-muted mt-1">
-                <span>20%</span>
-                <span>80%</span>
-              </div>
+                className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
+              >
+                <option value="">-- Seleccionar --</option>
+                {[20, 25, 30, 35, 40, 45, 50].map((p) => (
+                  <option key={p} value={p}>{p}%</option>
+                ))}
+              </select>
             </div>
             {precioKupo > 0 && (
               <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2">
