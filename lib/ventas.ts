@@ -70,6 +70,9 @@ const HEADERS_FINANCIERA = [
   "PAGO COMISION ADDI",
   "COMISION ADDI",
   "PRECIO ADDI",
+  "PAGO COMISION SUPAY",
+  "COMISION SUPAY",
+  "PRECIO SUPAY",
 ];
 
 const HEADERS_VENTAS = [
@@ -133,6 +136,9 @@ export type VentaInput = {
   pagoComisionAddi?: string;
   comisionAddi?: number;
   precioAddi?: number;
+  pagoComisionSupay?: string;
+  comisionSupay?: number;
+  precioSupay?: number;
   asesor: string;
 };
 
@@ -320,6 +326,9 @@ export async function guardarVenta(
     venta.pagoComisionAddi ?? "",
     venta.comisionAddi ?? "",
     venta.precioAddi ?? "",
+    venta.pagoComisionSupay ?? "",
+    venta.comisionSupay ?? "",
+    venta.precioSupay ?? "",
   ];
   const { filaEscrita } = await agregarFila(libroId, hojaVen, filaVentas);
 
