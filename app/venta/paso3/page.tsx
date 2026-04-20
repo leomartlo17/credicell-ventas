@@ -252,11 +252,14 @@ function Paso3Pago() {
   const esKrediyaOPayJoy =
     form.financiera === "KREDIYA" || form.financiera === "PAYJOY";
 
-  // +Kupo con iPhone: flujo especial con % de inicial
+  // +Kupo con iPhone: flujo especial con % de inicial.
+  // Detecta iPhone por tipoEquipo O por marca=Apple para cubrir productos
+  // ingresados antes de que existiera el campo tipoEquipo.
   const esKupoIphone =
     form.financiera === "+KUPO" && (
       producto?.tipoEquipo?.toLowerCase() === "iphone" ||
-      producto?.equipo?.toLowerCase().includes("iphone")
+      producto?.equipo?.toLowerCase().includes("iphone") ||
+      producto?.marca === "Apple"
     );
   const esKupoAndroid =
     form.financiera === "+KUPO" && !esKupoIphone;
