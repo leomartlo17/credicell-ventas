@@ -40,6 +40,9 @@ const schema = z.object({
   wompi: z.number().nonnegative().optional(),
   otro: z.number().nonnegative().optional(),
   observaciones: z.string().optional(),
+  pagoComisionAddi: z.string().optional(),
+  comisionAddi: z.number().optional(),
+  precioAddi: z.number().optional(),
 });
 
 /**
@@ -136,6 +139,9 @@ export async function POST(req: Request) {
       valorRecibir: d.valorRecibir,
       pagos,
       observaciones: d.observaciones,
+      pagoComisionAddi: d.pagoComisionAddi,
+      comisionAddi: d.comisionAddi,
+      precioAddi: d.precioAddi,
       asesor,
     });
 
