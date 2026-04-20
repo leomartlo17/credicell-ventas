@@ -7,11 +7,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 /**
- * Schema del nuevo formato (dinÃ¡mico): pagos es un array de { medio, valor }.
- * Soporta tanto los medios core como cualquier medio nuevo del catÃ¡logo.
+ * Schema del nuevo formato (dinámico): pagos es un array de { medio, valor }.
+ * Soporta tanto los medios core como cualquier medio nuevo del catálogo.
  *
  * Se mantiene compat con el formato viejo (efectivo, transferencia, etc.
- * como campos sueltos) por si algÃºn cliente viejo queda cacheado â
+ * como campos sueltos) por si algún cliente viejo queda cacheado —
  * internamente se convierte a pagos[].
  */
 const schema = z.object({
@@ -22,7 +22,7 @@ const schema = z.object({
   valorTotal: z.number().nonnegative(),
   porcentajeCuota: z.number().nonnegative().optional(),
   valorRecibir: z.number().nonnegative().optional(),
-  // NUEVO: desglose dinÃ¡mico
+  // NUEVO: desglose dinámico
   pagos: z
     .array(
       z.object({
@@ -55,7 +55,7 @@ const schema = z.object({
 
 /**
  * Convierte los campos legados (efectivo, transferencia, etc.) a entradas
- * del array pagos[]. Si el cliente ya mandÃ³ pagos[], lo usamos directo.
+ * del array pagos[]. Si el cliente ya mandó pagos[], lo usamos directo.
  */
 function normalizarPagos(d: z.infer<typeof schema>): EntradaPago[] {
   if (d.pagos && d.pagos.length > 0) {
@@ -87,7 +87,7 @@ export async function POST(req: Request) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "JSON invÃ¡lido" }, { status: 400 });
+    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
   const parsed = schema.safeParse(body);
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
     const cliente = await buscarPorCedula(sede.libroId, d.cedula);
     if (!cliente) {
       return NextResponse.json(
-        { error: `Cliente con cÃ©dula ${d.cedula} no existe. Vuelve a Paso 1.` },
+        { error: `Cliente con cédula ${d.cedula} no existe. Vuelve a Paso 1.` },
         { status: 400 }
       );
     }
@@ -111,7 +111,7 @@ export async function POST(req: Request) {
     const hojaInv = await hojaInventario(sede.libroId);
     if (!hojaInv) {
       return NextResponse.json(
-        { error: "No hay hoja de inventario todavÃ­a. Carga productos primero." },
+        { error: "No hay hoja de inventario todavía. Carga productos primero." },
         { status: 400 }
       );
     }
@@ -119,7 +119,7 @@ export async function POST(req: Request) {
     const producto = await buscarPorImei(sede.libroId, d.imei);
     if (!producto) {
       return NextResponse.json(
-        { error: `No encontrÃ© el IMEI ${d.imei} en inventario` },
+        { error: `No encontré el IMEI ${d.imei} en inventario` },
         { status: 400 }
       );
     }

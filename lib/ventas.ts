@@ -3,16 +3,16 @@
  * Al cerrar una venta (Paso 3) escribimos en VARIAS hojas:
  *   1. 'Inventario android 2026': marca equipo VENDIDO (FECHA VENTA + ESTADO)
  *   2. 'Ventas 2026': fila resumen legible (1 fila por venta, columnas fijas
- *      para los medios core â legibilidad humana)
- *   3. 'DETALLE_PAGOS': filas granulares (1 fila por CADA medio usado â
- *      fuente de verdad para auditorÃ­a al peso, permite medios dinÃ¡micos)
- *   4. Hoja financiera especÃ­fica (KREDIYA 2026, PAYJOY 2026) si aplica â
- *      solo financieras con estructura de conciliaciÃ³n ya definida
+ *      para los medios core — legibilidad humana)
+ *   3. 'DETALLE_PAGOS': filas granulares (1 fila por CADA medio usado —
+ *      fuente de verdad para auditoría al peso, permite medios dinámicos)
+ *   4. Hoja financiera específica (KREDIYA 2026, PAYJOY 2026) si aplica —
+ *      solo financieras con estructura de conciliación ya definida
  *   5. 'Caja 2026': ingreso si hubo efectivo
  *
  * Regla Leonardo: todo se registra, nada se borra. Una venta puede quedar
- * registrada en hasta 5 pestaÃ±as distintas â cada una sirve a un propÃ³sito
- * diferente (auditorÃ­a, conciliaciÃ³n, caja).
+ * registrada en hasta 5 pestañas distintas — cada una sirve a un propósito
+ * diferente (auditoría, conciliación, caja).
  */
 import {
   leerRango,
@@ -32,18 +32,18 @@ import {
 export const HOJA_VENTAS = "Ventas 2026";
 
 /**
- * Porcentajes de cuota inicial estÃ¡ndar que ofrecen las financieras.
+ * Porcentajes de cuota inicial estándar que ofrecen las financieras.
  */
 export const PORCENTAJES_INICIAL = [20, 25, 30, 35, 40, 45, 50] as const;
 
 /**
- * Financieras que generan hoja propia con conciliaciÃ³n (una fila por venta
+ * Financieras que generan hoja propia con conciliación (una fila por venta
  * con columnas fijas que ayudan a cuadrar pagos con la financiera).
  */
 const FINANCIERAS_CON_HOJA_PROPIA = ["KREDIYA", "PAYJOY", "ALCANOS"];
 
 /**
- * Headers de las hojas de conciliaciÃ³n por financiera (KREDIYA, PAYJOY).
+ * Headers de las hojas de conciliación por financiera (KREDIYA, PAYJOY).
  */
 const HEADERS_FINANCIERA = [
   "FECHA",
@@ -106,9 +106,9 @@ const HEADERS_VENTAS = [
 ];
 
 /**
- * Una entrada del desglose de pagos. El medio viene tal cual del catÃ¡logo
+ * Una entrada del desglose de pagos. El medio viene tal cual del catálogo
  * (nombre normalizado UPPERCASE). Este es el formato unificado entre
- * frontend â API â guardarVenta â DETALLE_PAGOS.
+ * frontend → API → guardarVenta → DETALLE_PAGOS.
  */
 export type EntradaPago = {
   medio: string;
@@ -128,13 +128,13 @@ export type VentaInput = {
   porcentajeCuota?: number;
   /**
    * Solo para KREDIYA / PAYJOY. Es la cuota inicial REAL que el asesor
-   * cobra al cliente â puede ser menor al valor % oficial cuando se le
+   * cobra al cliente — puede ser menor al valor % oficial cuando se le
    * hace descuento. La suma de medios de pago debe cuadrar con este valor.
    */
   valorRecibir?: number;
   /**
    * Desglose completo de medios de pago. Cada entrada es un medio del
-   * catÃ¡logo con su valor. Los medios fuera de los core se agrupan en
+   * catálogo con su valor. Los medios fuera de los core se agrupan en
    * "OTRO" en Ventas 2026 y quedan granulares en DETALLE_PAGOS.
    */
   pagos: EntradaPago[];
@@ -218,8 +218,8 @@ async function marcarVendidoEnInventario(
 
 /**
  * Agrupa un array de EntradaPago en un mapa de monto por medio core.
- * Medios dinÃ¡micos (no-core) se suman en el balde "OTRO" y se listan en
- * un texto "detalle" para adjuntar a OBSERVACIONES â asÃ­ el resumen de
+ * Medios dinámicos (no-core) se suman en el balde "OTRO" y se listan en
+ * un texto "detalle" para adjuntar a OBSERVACIONES — así el resumen de
  * Ventas 2026 no pierde info aunque el medio no tenga columna propia.
  */
 function agruparPagosParaResumen(pagos: EntradaPago[]): {
@@ -242,7 +242,7 @@ function agruparPagosParaResumen(pagos: EntradaPago[]): {
     if (coreSet.has(medio)) {
       core[medio] = (core[medio] || 0) + valor;
     } else {
-      // Medio dinÃ¡mico â sumarlo al balde OTRO y recordar el detalle
+      // Medio dinámico → sumarlo al balde OTRO y recordar el detalle
       core["OTRO"] = (core["OTRO"] || 0) + valor;
       otrosMap[medio] = (otrosMap[medio] || 0) + valor;
     }
@@ -259,7 +259,7 @@ function agruparPagosParaResumen(pagos: EntradaPago[]): {
 
 /**
  * Ejecuta el cierre de venta completo. Ver doc del archivo arriba para
- * las pestaÃ±as que toca. Lanza error si el equipo ya no estÃ¡ disponible
+ * las pestañas que toca. Lanza error si el equipo ya no está disponible
  * o si alguna escritura falla en Sheets.
  */
 export async function guardarVenta(
@@ -292,7 +292,7 @@ export async function guardarVenta(
   const { core, detalleOtros, total: totalAbonado } =
     agruparPagosParaResumen(pagosLimpios);
 
-  // CÃ¡lculos especÃ­ficos para financiera (si aplica)
+  // Cálculos específicos para financiera (si aplica)
   const pct = venta.porcentajeCuota || 0;
   const valorPctOficial = pct > 0 ? Math.round((venta.valorTotal * pct) / 100) : 0;
   const valorRecibir =
@@ -302,7 +302,7 @@ export async function guardarVenta(
   const descuento = valorPctOficial > 0 ? valorPctOficial - valorRecibir : 0;
   const valorFinanciado = pct > 0 ? venta.valorTotal - valorPctOficial : 0;
 
-  // Observaciones enriquecidas con el detalle de medios dinÃ¡micos
+  // Observaciones enriquecidas con el detalle de medios dinámicos
   const observacionesFinal = [
     venta.observaciones?.trim(),
     detalleOtros ? `[Otros medios: ${detalleOtros}]` : "",
@@ -324,7 +324,7 @@ export async function guardarVenta(
     venta.financiera,
     venta.valorTotal,
     venta.porcentajeCuota ?? "",
-    "", // VALOR CUOTA (legado â ahora se usa valorRecibir en KREDIYA/PAYJOY)
+    "", // VALOR CUOTA (legado — ahora se usa valorRecibir en KREDIYA/PAYJOY)
     core["EFECTIVO"] || "",
     core["CAJA"] || "",
     core["TRANSFERENCIA"] || "",
@@ -348,7 +348,7 @@ export async function guardarVenta(
   ];
   const { filaEscrita } = await agregarFila(libroId, hojaVen, filaVentas);
 
-  // 3) Escribir DETALLE_PAGOS â fila por cada medio usado (fuente granular)
+  // 3) Escribir DETALLE_PAGOS — fila por cada medio usado (fuente granular)
   await escribirDetallePagos(libroId, {
     fecha: fechaHoy,
     ventaId: filaEscrita,
@@ -360,7 +360,7 @@ export async function guardarVenta(
     pagos: pagosLimpios,
   });
 
-  // 4) Hoja de conciliaciÃ³n financiera (KREDIYA / PAYJOY / ALCANOS)
+  // 4) Hoja de conciliación financiera (KREDIYA / PAYJOY / ALCANOS)
   const hojaFin = await asegurarHojaFinanciera(libroId, venta.financiera);
   if (hojaFin) {
     const filaFinanciera = [
@@ -414,7 +414,7 @@ export async function guardarVenta(
       establecimiento: venta.clienteNombre,
       monto: efectivoTotal,
       asesor: venta.asesor,
-      referencia: `IMEI ${venta.imei} Â· CC ${venta.cedula}`,
+      referencia: `IMEI ${venta.imei} · CC ${venta.cedula}`,
       observaciones: `Efectivo de ${venta.marca} ${venta.equipo} (${venta.financiera})`,
     });
   }

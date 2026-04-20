@@ -1,0 +1,17 @@
+# Forzar UTF-8 y LF en todos los archivos del proyecto.
+# Esto previene el mojibake (Ã¡, Â¿, etc.) que aparece cuando un editor
+# o herramienta guarda el archivo con encoding Latin-1/Windows-1252.
+# Respetado automáticamente por VS Code, IntelliJ, Sublime, y todos los
+# editores modernos. También lo respeta Claude Code.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
