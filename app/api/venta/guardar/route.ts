@@ -43,6 +43,9 @@ const schema = z.object({
   pagoComisionAddi: z.string().optional(),
   comisionAddi: z.number().optional(),
   precioAddi: z.number().optional(),
+  pagoComisionSupay: z.string().optional(),
+  comisionSupay: z.number().optional(),
+  precioSupay: z.number().optional(),
 });
 
 /**
@@ -142,6 +145,9 @@ export async function POST(req: Request) {
       pagoComisionAddi: d.pagoComisionAddi,
       comisionAddi: d.comisionAddi,
       precioAddi: d.precioAddi,
+      pagoComisionSupay: d.pagoComisionSupay,
+      comisionSupay: d.comisionSupay,
+      precioSupay: d.precioSupay,
       asesor,
     });
 
