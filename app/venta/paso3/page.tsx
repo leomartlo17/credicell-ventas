@@ -503,7 +503,7 @@ function Paso3Pago() {
         />
 
         {/* +KUPO con iPhone: flujo especial de porcentaje */}
-        {esKupoIphone && valorTotalNum > 0 && (
+        {esKupoIphone && (
           <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
             <div className="text-xs text-brand font-bold uppercase tracking-wider">
               +Kupo · iPhone — Flujo especial
@@ -566,7 +566,7 @@ function Paso3Pago() {
         )}
 
         {/* +KUPO con Android/otro */}
-        {esKupoAndroid && valorTotalNum > 0 && (
+        {esKupoAndroid && (
           <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
             <div className="text-xs text-brand font-bold uppercase tracking-wider">
               +Kupo · Android / Otro
