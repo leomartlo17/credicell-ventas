@@ -499,7 +499,7 @@ function Paso3Pago() {
           label="Valor total de la venta *"
           value={form.valorTotal}
           onChange={(v) => actualizar("valorTotal", v)}
-          placeholder="1500000"
+          placeholder="1.500.000"
         />
 
         {/* +KUPO con iPhone: flujo especial de porcentaje */}
@@ -537,7 +537,7 @@ function Paso3Pago() {
                 value={form.cuotaKupo !== "" ? form.cuotaKupo : (inicialKupo > 0 ? String(inicialKupo) : "")}
                 onChange={(e) => actualizar("cuotaKupo", e.target.value)}
                 className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
-                placeholder="Ej: 500000"
+                placeholder="Ej: 500.000"
               />
             </div>
             <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
@@ -598,7 +598,7 @@ function Paso3Pago() {
                 value={form.cuotaKupo !== "" ? form.cuotaKupo : (inicialKupo > 0 ? String(inicialKupo) : "")}
                 onChange={(e) => actualizar("cuotaKupo", e.target.value)}
                 className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
-                placeholder="Ej: 500000"
+                placeholder="Ej: 500.000"
               />
             </div>
             <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
@@ -665,7 +665,7 @@ function Paso3Pago() {
               label="Valor a recibir (cuota inicial real que paga el cliente) *"
               value={form.valorRecibir}
               onChange={(v) => actualizar("valorRecibir", v)}
-              placeholder={valorPctOficial ? String(valorPctOficial) : "ej: 400000"}
+              placeholder={valorPctOficial ? String(valorPctOficial) : "ej: 400.000"}
             />
             {valorRecibirNum > 0 && valorPctOficial > 0 && (
               <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2 flex justify-between">
@@ -969,6 +969,7 @@ function Numero({
   onChange: (v: string) => void;
   placeholder?: string;
 }) {
+  const num = Number(value) || 0;
   return (
     <div>
       <label className="block text-xs text-muted mb-1">{label}</label>
@@ -980,6 +981,11 @@ function Numero({
         placeholder={placeholder}
         className="w-full px-3 py-2 bg-[#0b0d12] border border-[#2a2f3b] rounded-lg text-white placeholder:text-[#5a6170] focus:outline-none focus:border-brand text-sm"
       />
+      {num > 0 && (
+        <p className="text-xs text-brand font-mono mt-1">
+          = ${num.toLocaleString("es-CO")}
+        </p>
+      )}
     </div>
   );
 }
