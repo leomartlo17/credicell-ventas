@@ -69,7 +69,7 @@ function Paso3Pago() {
   const [medios, setMedios] = useState<MedioCatalogo[]>([]);
   const [estado, setEstado] = useState<Estado>({ tipo: "cargando" });
 
-  // Medios seleccionados en esta venta. Orden importa (como los agregÃ³
+  // Medios seleccionados en esta venta. Orden importa (como los agregÃÂ³
   // el asesor). Cada uno tiene su monto. Si el asesor quita un medio,
   // desaparece del arreglo.
   const [seleccionados, setSeleccionados] = useState<
@@ -88,6 +88,7 @@ function Paso3Pago() {
     valorTotal: "",
     porcentajeCuota: "",
     porcentajeKupo: "20",
+    cuotaKupo: "",
     valorRecibir: "",
     observaciones: "",
   });
@@ -103,7 +104,7 @@ function Paso3Pago() {
     if (!cedula || !imei) {
       setEstado({
         tipo: "error",
-        mensaje: "Faltan datos de la venta (cÃ©dula o IMEI). Vuelve al Paso 1.",
+        mensaje: "Faltan datos de la venta (cÃÂ©dula o IMEI). Vuelve al Paso 1.",
       });
       return;
     }
@@ -148,9 +149,9 @@ function Paso3Pago() {
         setProducto(dProd.producto);
         setCliente(dCliente.cliente);
         setSedeInfo(dSede);
-        // Medios activos del catÃ¡logo dinÃ¡mico
-        // Si falla el endpoint, no bloqueamos toda la venta â usamos lista
-        // mÃ­nima para que el asesor pueda seguir.
+        // Medios activos del catÃÂ¡logo dinÃÂ¡mico
+        // Si falla el endpoint, no bloqueamos toda la venta Ã¢ÂÂ usamos lista
+        // mÃÂ­nima para que el asesor pueda seguir.
         const mediosList: MedioCatalogo[] = Array.isArray(dMedios?.medios)
           ? dMedios.medios
           : [];
@@ -178,7 +179,7 @@ function Paso3Pago() {
 
   function agregarMedio(medio: string) {
     setSeleccionados((s) => {
-      if (s.some((x) => x.medio === medio)) return s; // ya estÃ¡
+      if (s.some((x) => x.medio === medio)) return s; // ya estÃÂ¡
       return [...s, { medio, valor: "" }];
     });
     setMostrarSelector(false);
@@ -198,7 +199,7 @@ function Paso3Pago() {
   async function crearNuevoMedio() {
     const nombre = nuevoMedioNombre.trim();
     if (nombre.length < 2) {
-      setErrorNuevo("MÃ­nimo 2 caracteres");
+      setErrorNuevo("MÃÂ­nimo 2 caracteres");
       return;
     }
     setGuardandoNuevo(true);
@@ -214,7 +215,7 @@ function Paso3Pago() {
         setErrorNuevo(d.error || "Error al crear");
         return;
       }
-      // El medio se agregÃ³ al catÃ¡logo â meterlo en la lista local y
+      // El medio se agregÃÂ³ al catÃÂ¡logo Ã¢ÂÂ meterlo en la lista local y
       // seleccionarlo para esta venta inmediatamente.
       const nuevo: MedioCatalogo = {
         nombre: d.medio.nombre,
@@ -232,7 +233,7 @@ function Paso3Pago() {
     }
   }
 
-  // CÃ¡lculos derivados
+  // CÃÂ¡lculos derivados
   const valorTotalNum = Number(form.valorTotal) || 0;
   const pagadoNum = useMemo(() => {
     return seleccionados.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
@@ -249,15 +250,22 @@ function Paso3Pago() {
 
   // +Kupo con iPhone: flujo especial con % de inicial
   const esKupoIphone =
-    form.financiera === "+KUPO" && producto?.tipoEquipo?.toLowerCase() === "iphone";
+    form.financiera === "+KUPO" && (
+      producto?.tipoEquipo?.toLowerCase() === "iphone" ||
+      producto?.equipo?.toLowerCase().includes("iphone")
+    );
   const esKupoAndroid =
-    form.financiera === "+KUPO" && producto?.tipoEquipo?.toLowerCase() !== "iphone";
+    form.financiera === "+KUPO" && !esKupoIphone;
   const precioKupo = valorTotalNum || producto?.precioCosto || 0;
   const minPctKupo = precioKupo <= 3_000_000
     ? 20
     : Math.min(80, Math.max(20, Math.ceil(((precioKupo - 3_000_000) / precioKupo) * 100)));
   const pctKupoNum = Math.max(minPctKupo, Number(form.porcentajeKupo) || minPctKupo);
-  const inicialKupo = Math.round(precioKupo * pctKupoNum / 100);
+  const cuotaKupoDigitada = parseInt(form.cuotaKupo) || 0;
+  const inicialKupo = cuotaKupoDigitada > 0 ? cuotaKupoDigitada : Math.round(precioKupo * pctKupoNum / 100);
+  const pctKupoReal = precioKupo > 0 && cuotaKupoDigitada > 0
+    ? Math.round(cuotaKupoDigitada / precioKupo * 10000) / 100
+    : pctKupoNum;
   const financiadoKupo = precioKupo - inicialKupo;
 
   async function confirmar() {
@@ -280,14 +288,14 @@ function Paso3Pago() {
       if (pctKupoNum < minPctKupo) {
         setEstado({
           tipo: "error",
-          mensaje: `Porcentaje mÃ­nimo para este precio: ${minPctKupo}% (+Kupo financia mÃ¡x $3.000.000)`,
+          mensaje: `Porcentaje mÃÂ­nimo para este precio: ${minPctKupo}% (+Kupo financia mÃÂ¡x $3.000.000)`,
         });
         return;
       }
       if (financiadoKupo > 3_000_000) {
         setEstado({
           tipo: "error",
-          mensaje: `+Kupo financia mÃ¡ximo $3.000.000. Sube el porcentaje inicial.`,
+          mensaje: `+Kupo financia mÃÂ¡ximo $3.000.000. Sube el porcentaje inicial.`,
         });
         return;
       }
@@ -295,7 +303,7 @@ function Paso3Pago() {
       if (!pctNum) {
         setEstado({
           tipo: "error",
-          mensaje: "Selecciona el % inicial que quedÃ³ con la financiera",
+          mensaje: "Selecciona el % inicial que quedÃÂ³ con la financiera",
         });
         return;
       }
@@ -319,7 +327,7 @@ function Paso3Pago() {
       }
     }
 
-    // Convertir selecciÃ³n del asesor a pagos numÃ©ricos > 0
+    // Convertir selecciÃÂ³n del asesor a pagos numÃÂ©ricos > 0
     const pagosArray = seleccionados
       .map((s) => ({ medio: s.medio, valor: Number(s.valor) || 0 }))
       .filter((p) => p.valor > 0);
@@ -344,7 +352,7 @@ function Paso3Pago() {
           financiera: form.financiera,
           valorTotal: valorTotalNum,
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
-          porcentajeKupo: esKupoIphone ? pctKupoNum : undefined,
+          porcentajeKupo: esKupoIphone ? pctKupoReal : undefined,
           inicialKupo: esKupoIphone ? inicialKupo : undefined,
           valorRecibir: form.valorRecibir ? Number(form.valorRecibir) : undefined,
           pagos: pagosArray,
@@ -365,7 +373,7 @@ function Paso3Pago() {
   if (status === "loading" || !session) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <p className="text-muted text-sm">Cargando sesiÃ³n...</p>
+        <p className="text-muted text-sm">Cargando sesiÃÂ³n...</p>
       </main>
     );
   }
@@ -388,18 +396,18 @@ function Paso3Pago() {
           onClick={() => router.push("/venta/paso1")}
           className="px-4 py-2 bg-[#141821] border border-[#2a2f3b] text-white rounded-lg"
         >
-          â Volver al Paso 1
+          Ã¢ÂÂ Volver al Paso 1
         </button>
       </main>
     );
   }
 
-  // Pantalla de Ã©xito
+  // Pantalla de ÃÂ©xito
   if (estado.tipo === "ok") {
     return (
       <main className="min-h-screen p-6 max-w-lg mx-auto">
         <div className="bg-[#141821] border border-green-800 rounded-xl p-6 mb-6">
-          <div className="text-green-400 text-xs mb-2">â VENTA GUARDADA</div>
+          <div className="text-green-400 text-xs mb-2">Ã¢ÂÂ VENTA GUARDADA</div>
           <h1 className="text-2xl font-bold mb-4">
             Fila {estado.filaVenta} en hoja Ventas 2026
           </h1>
@@ -413,8 +421,8 @@ function Paso3Pago() {
             </div>
           )}
           <p className="text-muted text-xs">
-            El equipo quedÃ³ marcado como VENDIDO en el inventario. El detalle del
-            pago quedÃ³ registrado fila por fila en la hoja DETALLE_PAGOS.
+            El equipo quedÃÂ³ marcado como VENDIDO en el inventario. El detalle del
+            pago quedÃÂ³ registrado fila por fila en la hoja DETALLE_PAGOS.
           </p>
         </div>
         <div className="flex gap-3">
@@ -443,12 +451,12 @@ function Paso3Pago() {
           onClick={() => router.push(`/venta/paso2?cedula=${cedula}`)}
           className="text-muted text-sm hover:text-white"
         >
-          â Paso 2
+          Ã¢ÂÂ Paso 2
         </button>
         <div className="text-muted text-xs">CC: {cedula}</div>
       </div>
 
-      <h1 className="text-2xl font-bold mb-1">Paso 3 Â· Pago</h1>
+      <h1 className="text-2xl font-bold mb-1">Paso 3 ÃÂ· Pago</h1>
       <p className="text-muted text-sm mb-6">
         Financiera, valor, y desglose del pago.
       </p>
@@ -458,11 +466,11 @@ function Paso3Pago() {
         <div className="bg-[#141821] border border-[#2a2f3b] rounded-xl p-4 mb-6 text-sm space-y-1">
           <div className="text-xs text-muted">CLIENTE</div>
           <div className="font-medium">{cliente.nombre}</div>
-          <div className="text-muted mb-3">CC {cliente.cedula}{cliente.telefono ? ` Â· Tel ${cliente.telefono}` : ""}</div>
+          <div className="text-muted mb-3">CC {cliente.cedula}{cliente.telefono ? ` ÃÂ· Tel ${cliente.telefono}` : ""}</div>
           <div className="text-xs text-muted">PRODUCTO</div>
           <div className="font-medium">
-            {producto.marca} Â· {producto.equipo}
-            {producto.color && ` Â· ${producto.color}`}
+            {producto.marca} ÃÂ· {producto.equipo}
+            {producto.color && ` ÃÂ· ${producto.color}`}
           </div>
           <div className="font-mono text-xs text-muted">IMEI {producto.imei}</div>
         </div>
@@ -498,26 +506,26 @@ function Paso3Pago() {
         {esKupoIphone && valorTotalNum > 0 && (
           <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
             <div className="text-xs text-brand font-bold uppercase tracking-wider">
-              +Kupo Â· iPhone â Flujo especial
+              +Kupo ÃÂ· iPhone Ã¢ÂÂ Flujo especial
             </div>
             <div>
               <div className="flex justify-between items-baseline mb-1">
                 <label className="text-xs text-muted">
                   % que recibe Credicell (inicial)
                 </label>
-                <span className="text-brand font-bold">{Number.isInteger(pctKupoNum) ? pctKupoNum : pctKupoNum.toFixed(2)}%</span>
+                <span className="text-brand font-bold">{Number.isInteger(pctKupoReal) ? pctKupoReal : pctKupoReal.toFixed(2)}%</span>
               </div>
               <input
                 type="range"
                 min={minPctKupo}
                 max={80}
                 step={1}
-                value={Math.round(pctKupoNum)}
-                onChange={(e) => actualizar("porcentajeKupo", e.target.value)}
+                value={Math.round(pctKupoReal)}
+                onChange={(e) => { actualizar("porcentajeKupo", e.target.value); actualizar("cuotaKupo", ""); }}
                 className="w-full accent-brand"
               />
               <div className="flex justify-between text-xs text-muted mt-1">
-                <span>MÃ­n {minPctKupo}%</span>
+                <span>MÃÂ­n {minPctKupo}%</span>
                 <span>80%</span>
               </div>
             </div>
@@ -527,15 +535,8 @@ function Paso3Pago() {
               <input
                 type="number"
                 min={0}
-                key={pctKupoNum}
-                defaultValue={inicialKupo > 0 ? inicialKupo : ""}
-                onBlur={(e) => {
-                  const val = parseInt(e.target.value) || 0;
-                  if (precioKupo > 0) {
-                    const pct = Math.min(80, Math.max(minPctKupo, Math.round(val / precioKupo * 10000) / 100));
-                    actualizar("porcentajeKupo", String(pct));
-                  }
-                }}
+                value={form.cuotaKupo !== "" ? form.cuotaKupo : (inicialKupo > 0 ? String(inicialKupo) : "")}
+                onChange={(e) => actualizar("cuotaKupo", e.target.value)}
                 className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
                 placeholder="Ej: 500000"
               />
@@ -553,10 +554,10 @@ function Paso3Pago() {
               </div>
               {financiadoKupo > 3_000_000 ? (
                 <p className="text-red-400 text-xs">
-                  +Kupo financia mÃ¡ximo $3.000.000. Sube el porcentaje.
+                  +Kupo financia mÃÂ¡ximo $3.000.000. Sube el porcentaje.
                 </p>
               ) : (
-                <p className="text-green-400 text-xs">FinanciaciÃ³n vÃ¡lida</p>
+                <p className="text-green-400 text-xs">FinanciaciÃÂ³n vÃÂ¡lida</p>
               )}
             </div>
             <p className="text-xs text-muted">
@@ -570,22 +571,22 @@ function Paso3Pago() {
         {esKupoAndroid && valorTotalNum > 0 && (
           <div className="bg-[#0b0d12] border border-orange-900/60 rounded-lg p-3 space-y-3">
             <div className="text-xs text-brand font-bold uppercase tracking-wider">
-              +Kupo Â· Android / Otro
+              +Kupo ÃÂ· Android / Otro
             </div>
             <div>
               <div className="flex justify-between items-baseline mb-1">
                 <label className="text-xs text-muted">
                   % de cuota inicial
                 </label>
-                <span className="text-brand font-bold">{Number.isInteger(pctKupoNum) ? pctKupoNum : pctKupoNum.toFixed(2)}%</span>
+                <span className="text-brand font-bold">{Number.isInteger(pctKupoReal) ? pctKupoReal : pctKupoReal.toFixed(2)}%</span>
               </div>
               <input
                 type="range"
                 min={20}
                 max={80}
                 step={1}
-                value={Math.round(pctKupoNum)}
-                onChange={(e) => actualizar("porcentajeKupo", e.target.value)}
+                value={Math.round(pctKupoReal)}
+                onChange={(e) => { actualizar("porcentajeKupo", e.target.value); actualizar("cuotaKupo", ""); }}
                 className="w-full accent-brand"
               />
               <div className="flex justify-between text-xs text-muted mt-1">
@@ -599,15 +600,8 @@ function Paso3Pago() {
               <input
                 type="number"
                 min={0}
-                key={pctKupoNum}
-                defaultValue={inicialKupo > 0 ? inicialKupo : ""}
-                onBlur={(e) => {
-                  const val = parseInt(e.target.value) || 0;
-                  if (precioKupo > 0) {
-                    const pct = Math.min(80, Math.max(20, Math.round(val / precioKupo * 10000) / 100));
-                    actualizar("porcentajeKupo", String(pct));
-                  }
-                }}
+                value={form.cuotaKupo !== "" ? form.cuotaKupo : (inicialKupo > 0 ? String(inicialKupo) : "")}
+                onChange={(e) => actualizar("cuotaKupo", e.target.value)}
                 className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
                 placeholder="Ej: 500000"
               />
@@ -625,10 +619,10 @@ function Paso3Pago() {
               </div>
               {financiadoKupo > 3_000_000 ? (
                 <p className="text-red-400 text-xs">
-                  +Kupo financia mÃ¡ximo $3.000.000. Sube el porcentaje.
+                  +Kupo financia mÃÂ¡ximo $3.000.000. Sube el porcentaje.
                 </p>
               ) : (
-                <p className="text-green-400 text-xs">FinanciaciÃ³n vÃ¡lida</p>
+                <p className="text-green-400 text-xs">FinanciaciÃÂ³n vÃÂ¡lida</p>
               )}
             </div>
             <p className="text-xs text-muted">
@@ -644,7 +638,7 @@ function Paso3Pago() {
             </div>
             <div>
               <label className="block text-xs text-muted mb-1">
-                % inicial (la que quedÃ³ con la financiera)
+                % inicial (la que quedÃÂ³ con la financiera)
               </label>
               <select
                 value={form.porcentajeCuota}
@@ -686,7 +680,7 @@ function Paso3Pago() {
                   {descuentoFinanciera > 0
                     ? "Descuento al cliente:"
                     : descuentoFinanciera < 0
-                      ? "PagÃ³ de mÃ¡s:"
+                      ? "PagÃÂ³ de mÃÂ¡s:"
                       : "Sin descuento:"}
                 </span>
                 <span
@@ -709,22 +703,22 @@ function Paso3Pago() {
           <p className="text-xs text-muted mb-2 font-medium">
             Desglose del pago por medio
             {esContado
-              ? " â debe sumar el valor total"
+              ? " Ã¢ÂÂ debe sumar el valor total"
               : esKrediyaOPayJoy
-                ? " â debe sumar el valor a recibir (cuota inicial real)"
+                ? " Ã¢ÂÂ debe sumar el valor a recibir (cuota inicial real)"
                 : esKupoIphone
-                  ? ` â debe sumar el inicial ($${inicialKupo.toLocaleString("es-CO")})`
-                  : " â lo que pagÃ³ el cliente hoy"}
+                  ? ` Ã¢ÂÂ debe sumar el inicial ($${inicialKupo.toLocaleString("es-CO")})`
+                  : " Ã¢ÂÂ lo que pagÃÂ³ el cliente hoy"}
           </p>
           {/* UX: el asesor CONSTRUYE el desglose agregando medios uno
               por uno. Evita el ruido visual de mostrar todos los medios
-              cuando tÃ­picamente solo se usa 1-2. Admins pueden crear
+              cuando tÃÂ­picamente solo se usa 1-2. Admins pueden crear
               medios nuevos inline sin salir del Paso 3.
-              CAJA queda excluido del selector â es un saldo fÃ­sico de la
+              CAJA queda excluido del selector Ã¢ÂÂ es un saldo fÃÂ­sico de la
               sede, no un medio de pago que el cliente use. */}
           {seleccionados.length === 0 && !mostrarSelector && (
             <p className="text-xs text-muted italic mb-3">
-              AÃºn no has agregado medios. Presiona "+ Agregar medio" para empezar.
+              AÃÂºn no has agregado medios. Presiona "+ Agregar medio" para empezar.
             </p>
           )}
 
@@ -752,7 +746,7 @@ function Paso3Pago() {
                   aria-label={`Quitar ${s.medio}`}
                   className="w-7 h-7 text-muted hover:text-red-400 text-lg leading-none"
                 >
-                  Ã
+                  ÃÂ
                 </button>
               </div>
             ))}
@@ -810,7 +804,7 @@ function Paso3Pago() {
               </div>
 
               {/* Admin puede crear un medio nuevo sin salir del Paso 3.
-                  Se agrega al catÃ¡logo y se selecciona automÃ¡ticamente
+                  Se agrega al catÃÂ¡logo y se selecciona automÃÂ¡ticamente
                   para esta venta. */}
               {esAdmin && !creandoNuevo && (
                 <button
@@ -828,7 +822,7 @@ function Paso3Pago() {
               {esAdmin && creandoNuevo && (
                 <div className="mt-3 pt-3 border-t border-[#2a2f3b] space-y-2">
                   <p className="text-xs text-muted">
-                    Nuevo medio (quedarÃ¡ en el catÃ¡logo y disponible para
+                    Nuevo medio (quedarÃÂ¡ en el catÃÂ¡logo y disponible para
                     todas las ventas)
                   </p>
                   <input
@@ -950,9 +944,9 @@ function Paso3Pago() {
 }
 
 /**
- * Los medios del catÃ¡logo se almacenan en UPPERCASE por consistencia,
- * pero en la UI queremos mostrarlos mÃ¡s legibles: "DATAFONO" â "DatÃ¡fono",
- * "NEQUI" â "Nequi", etc. Mapeo manual corto â para medios que no estÃ©n
+ * Los medios del catÃÂ¡logo se almacenan en UPPERCASE por consistencia,
+ * pero en la UI queremos mostrarlos mÃÂ¡s legibles: "DATAFONO" Ã¢ÂÂ "DatÃÂ¡fono",
+ * "NEQUI" Ã¢ÂÂ "Nequi", etc. Mapeo manual corto Ã¢ÂÂ para medios que no estÃÂ©n
  * en el mapa, se muestra Capitalizado.
  */
 function formatearNombreMedio(n: string): string {
@@ -960,7 +954,7 @@ function formatearNombreMedio(n: string): string {
     EFECTIVO: "Efectivo",
     TRANSFERENCIA: "Transferencia",
     NEQUI: "Nequi",
-    DATAFONO: "DatÃ¡fono",
+    DATAFONO: "DatÃÂ¡fono",
     WOMPI: "Wompi",
     OTRO: "Otro",
     DAVIPLATA: "Daviplata",
