@@ -37,9 +37,10 @@ export const HOJA_VENTAS = "Ventas 2026";
 export const PORCENTAJES_INICIAL = [20, 25, 30, 35, 40, 45, 50] as const;
 
 /**
- * Por ahora solo KREDIYA y PAYJOY generan hoja propia con conciliaciÃ³n.
+ * Financieras que generan hoja propia con conciliaciÃ³n (una fila por venta
+ * con columnas fijas que ayudan a cuadrar pagos con la financiera).
  */
-const FINANCIERAS_CON_HOJA_PROPIA = ["KREDIYA", "PAYJOY"];
+const FINANCIERAS_CON_HOJA_PROPIA = ["KREDIYA", "PAYJOY", "ALCANOS"];
 
 /**
  * Headers de las hojas de conciliaciÃ³n por financiera (KREDIYA, PAYJOY).
@@ -75,6 +76,9 @@ const HEADERS_FINANCIERA = [
   "PRECIO SUPAY",
   "PORCENTAJE RENTING",
   "INICIAL RENTING",
+  "PAGO COMISION ALCANOS",
+  "COMISION ALCANOS",
+  "PRECIO ALCANOS",
 ];
 
 const HEADERS_VENTAS = [
@@ -143,6 +147,9 @@ export type VentaInput = {
   precioSupay?: number;
   porcentajeRenting?: number;
   inicialRenting?: number;
+  pagoComisionAlcanos?: string;
+  comisionAlcanos?: number;
+  precioAlcanos?: number;
   asesor: string;
 };
 
@@ -335,6 +342,9 @@ export async function guardarVenta(
     venta.precioSupay ?? "",
     venta.porcentajeRenting ?? "",
     venta.inicialRenting ?? "",
+    venta.pagoComisionAlcanos ?? "",
+    venta.comisionAlcanos ?? "",
+    venta.precioAlcanos ?? "",
   ];
   const { filaEscrita } = await agregarFila(libroId, hojaVen, filaVentas);
 
@@ -350,7 +360,7 @@ export async function guardarVenta(
     pagos: pagosLimpios,
   });
 
-  // 4) Hoja de conciliaciÃ³n financiera (solo KREDIYA / PAYJOY)
+  // 4) Hoja de conciliaciÃ³n financiera (KREDIYA / PAYJOY / ALCANOS)
   const hojaFin = await asegurarHojaFinanciera(libroId, venta.financiera);
   if (hojaFin) {
     const filaFinanciera = [
@@ -376,6 +386,17 @@ export async function guardarVenta(
       core["WOMPI"] || "",
       core["OTRO"] || "",
       observacionesFinal,
+      venta.pagoComisionAddi ?? "",
+      venta.comisionAddi ?? "",
+      venta.precioAddi ?? "",
+      venta.pagoComisionSupay ?? "",
+      venta.comisionSupay ?? "",
+      venta.precioSupay ?? "",
+      venta.porcentajeRenting ?? "",
+      venta.inicialRenting ?? "",
+      venta.pagoComisionAlcanos ?? "",
+      venta.comisionAlcanos ?? "",
+      venta.precioAlcanos ?? "",
     ];
     await agregarFila(libroId, hojaFin, filaFinanciera);
   }

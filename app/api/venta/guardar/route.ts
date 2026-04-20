@@ -48,6 +48,9 @@ const schema = z.object({
   precioSupay: z.number().optional(),
   porcentajeRenting: z.number().optional(),
   inicialRenting: z.number().optional(),
+  pagoComisionAlcanos: z.string().optional(),
+  comisionAlcanos: z.number().optional(),
+  precioAlcanos: z.number().optional(),
 });
 
 /**
@@ -150,6 +153,11 @@ export async function POST(req: Request) {
       pagoComisionSupay: d.pagoComisionSupay,
       comisionSupay: d.comisionSupay,
       precioSupay: d.precioSupay,
+      porcentajeRenting: d.porcentajeRenting,
+      inicialRenting: d.inicialRenting,
+      pagoComisionAlcanos: d.pagoComisionAlcanos,
+      comisionAlcanos: d.comisionAlcanos,
+      precioAlcanos: d.precioAlcanos,
       asesor,
     });
 
