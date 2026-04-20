@@ -90,6 +90,7 @@ function Paso3Pago() {
     porcentajeKupo: "20",
     cuotaKupo: "",
     pagoComisionAddi: "",
+    pagoComisionSupay: "",
     valorRecibir: "",
     observaciones: "",
   });
@@ -274,6 +275,12 @@ function Paso3Pago() {
   const precioAddiFinanciado = esAddi && valorTotalNum > 0 ? Math.round(valorTotalNum / (1 - ADDI_RATE)) : 0;
   const comisionAddiFinanciada = precioAddiFinanciado - valorTotalNum;
   const diferenciaAddi = esAddi && form.pagoComisionAddi === "efectivo" ? comisionAddiEfectivo - pagadoNum : 0;
+  const esSupay = form.financiera === "SU+PAY";
+  const SUPAY_RATE = 0.019;
+  const comisionSupayEfectivo = esSupay && valorTotalNum > 0 ? Math.round(valorTotalNum * SUPAY_RATE) : 0;
+  const precioSupayFinanciado = esSupay && valorTotalNum > 0 ? Math.round(valorTotalNum / (1 - SUPAY_RATE)) : 0;
+  const comisionSupayFinanciada = precioSupayFinanciado - valorTotalNum;
+  const diferenciaSupay = esSupay && form.pagoComisionSupay === "efectivo" ? comisionSupayEfectivo - pagadoNum : 0;
 
   async function confirmar() {
     if (!form.financiera) {
@@ -341,6 +348,15 @@ function Paso3Pago() {
         setEstado({ tipo: "error", mensaje: diferenciaAddi > 0 ? `Faltan ${diferenciaAddi.toLocaleString("es-CO")} en medios de pago (comisión ADDI en efectivo).` : `Los medios se pasan por ${Math.abs(diferenciaAddi).toLocaleString("es-CO")}.` });
         return;
       }
+    } else if (esSupay) {
+      if (!form.pagoComisionSupay) {
+        setEstado({ tipo: "error", mensaje: "Selecciona cómo paga el cliente la comisión SU+PAY" });
+        return;
+      }
+      if (form.pagoComisionSupay === "efectivo" && diferenciaSupay !== 0) {
+        setEstado({ tipo: "error", mensaje: `Falta ${diferenciaSupay.toLocaleString("es-CO")} para cubrir la comisión SU+PAY` });
+        return;
+      }
     }
 
     // Convertir selección del asesor a pagos numéricos > 0
@@ -376,6 +392,9 @@ function Paso3Pago() {
             pagoComisionAddi: esAddi ? form.pagoComisionAddi : undefined,
             comisionAddi: esAddi ? (form.pagoComisionAddi === "efectivo" ? comisionAddiEfectivo : comisionAddiFinanciada) : undefined,
             precioAddi: esAddi && form.pagoComisionAddi === "addi" ? precioAddiFinanciado : undefined,
+            pagoComisionSupay: esSupay ? form.pagoComisionSupay : undefined,
+            comisionSupay: esSupay ? comisionSupayEfectivo : undefined,
+            precioSupay: esSupay && form.pagoComisionSupay === "supay" ? precioSupayFinanciado : undefined,
         }),
       });
       const data = await r.json();
@@ -501,7 +520,7 @@ function Paso3Pago() {
           <label className="block text-xs text-muted mb-1">Financiera *</label>
           <select
             value={form.financiera}
-            onChange={(e) => setForm(f => ({ ...f, financiera: e.target.value, pagoComisionAddi: "" }))}
+            onChange={(e) => setForm(f => ({ ...f, financiera: e.target.value, pagoComisionAddi: "", pagoComisionSupay: "" }))}
             className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
           >
             <option value="">-- Seleccionar --</option>
@@ -789,6 +808,72 @@ function Paso3Pago() {
             )}
           </div>
         )}
+        {esSupay && (
+          <div className="bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3 space-y-3">
+            <div className="text-xs text-brand font-bold uppercase tracking-wider">
+              SU+PAY — Comisión financiera
+            </div>
+            <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2">
+              <div className="flex justify-between text-muted">
+                <span>Tasa SU+PAY (1.9%):</span>
+                <span className="text-white font-mono">1.9%</span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-muted mb-2">
+                ¿Cómo paga el cliente la comisión?
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button"
+                  onClick={() => actualizar("pagoComisionSupay", "efectivo")}
+                  className={`py-2 px-3 rounded-lg text-sm border ${form.pagoComisionSupay === "efectivo" ? "bg-brand text-[#0b0d12] border-brand font-bold" : "bg-[#141821] text-white border-[#2a2f3b]"}`}
+                >
+                  En efectivo
+                </button>
+                <button type="button"
+                  onClick={() => actualizar("pagoComisionSupay", "supay")}
+                  className={`py-2 px-3 rounded-lg text-sm border ${form.pagoComisionSupay === "supay" ? "bg-brand text-[#0b0d12] border-brand font-bold" : "bg-[#141821] text-white border-[#2a2f3b]"}`}
+                >
+                  Dentro de SU+PAY
+                </button>
+              </div>
+            </div>
+            {form.pagoComisionSupay === "efectivo" && valorTotalNum > 0 && (
+              <div className="bg-[#141821] border border-[#2a2f3b] rounded p-2 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted">Valor a registrar en SU+PAY:</span>
+                  <span className="text-white font-mono">${valorTotalNum.toLocaleString("es-CO")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Comisión en efectivo:</span>
+                  <span className="text-yellow-400 font-mono font-bold">${comisionSupayEfectivo.toLocaleString("es-CO")}</span>
+                </div>
+                <p className="text-[10px] text-muted pt-1 border-t border-[#2a2f3b]">
+                  Agrega ${comisionSupayEfectivo.toLocaleString("es-CO")} en efectivo en el desglose de abajo.
+                </p>
+              </div>
+            )}
+            {form.pagoComisionSupay === "supay" && valorTotalNum > 0 && (
+              <div className="bg-[#141821] border border-[#2a2f3b] rounded p-2 space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted">Precio a ingresar en SU+PAY:</span>
+                  <span className="text-brand font-mono font-bold">${precioSupayFinanciado.toLocaleString("es-CO")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Comisión incluida:</span>
+                  <span className="text-yellow-400 font-mono">${comisionSupayFinanciada.toLocaleString("es-CO")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">Tienda recibe neto:</span>
+                  <span className="text-green-400 font-mono">${valorTotalNum.toLocaleString("es-CO")}</span>
+                </div>
+                <p className="text-[10px] text-muted pt-1 border-t border-[#2a2f3b]">
+                  Ingresa ${precioSupayFinanciado.toLocaleString("es-CO")} en SU+PAY. El cliente no paga efectivo.
+                </p>
+              </div>
+            )}
+          </div>
+        
         <div className="pt-2 border-t border-[#2a2f3b] mt-4">
           <p className="text-xs text-muted mb-2 font-medium">
             Desglose del pago por medio
@@ -1050,7 +1135,7 @@ function Paso3Pago() {
 
       <button
         onClick={confirmar}
-        disabled={estado.tipo === "guardando" || (esAddi && !form.pagoComisionAddi) || (esAddi && form.pagoComisionAddi === "efectivo" && diferenciaAddi !== 0) || (!esAddi && seleccionados.length > 0 && diferenciaMedios !== 0)}
+        disabled={estado.tipo === "guardando" || (esAddi && !form.pagoComisionAddi) || (esAddi && form.pagoComisionAddi === "efectivo" && diferenciaAddi !== 0) || (esSupay && !form.pagoComisionSupay) || (esSupay && form.pagoComisionSupay === "efectivo" && diferenciaSupay !== 0) || (!esAddi && !esSupay && seleccionados.length > 0 && diferenciaMedios !== 0)}
         className="w-full mt-6 py-4 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg text-lg"
       >
         {estado.tipo === "guardando" ? "Guardando..." : "Confirmar venta"}
