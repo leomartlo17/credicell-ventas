@@ -3,16 +3,15 @@
  * Al cerrar una venta (Paso 3) escribimos en VARIAS hojas:
  *   1. 'Inventario android 2026': marca equipo VENDIDO (FECHA VENTA + ESTADO)
  *   2. 'Ventas 2026': fila resumen legible (1 fila por venta, columnas fijas
- *      para los medios core — legibilidad humana)
+ *      para los medios core — legibilidad humana, MASTER con todo).
  *   3. 'DETALLE_PAGOS': filas granulares (1 fila por CADA medio usado —
- *      fuente de verdad para auditoría al peso, permite medios dinámicos)
- *   4. Hoja financiera específica (KREDIYA 2026, PAYJOY 2026) si aplica —
- *      solo financieras con estructura de conciliación ya definida
- *   5. 'Caja 2026': ingreso si hubo efectivo
+ *      fuente de verdad para auditoría al peso, permite medios dinámicos).
+ *   4. Hoja financiera específica (KREDIYA/PAYJOY/ALCANOS/ADDI/SU+PAY/RENTING)
+ *      con columnas PROPIAS de esa financiera, no genéricas.
+ *   5. 'Caja 2026': ingreso si hubo efectivo.
  *
- * Regla Leonardo: todo se registra, nada se borra. Una venta puede quedar
- * registrada en hasta 5 pestañas distintas — cada una sirve a un propósito
- * diferente (auditoría, conciliación, caja).
+ * Regla Leonardo: cada financiera tiene sus propias columnas legibles. Nada
+ * de hojas genéricas con columnas vacías que no aplican.
  */
 import {
   leerRango,
@@ -37,15 +36,40 @@ export const HOJA_VENTAS = "Ventas 2026";
 export const PORCENTAJES_INICIAL = [20, 25, 30, 35, 40, 45, 50] as const;
 
 /**
- * Financieras que generan hoja propia con conciliación (una fila por venta
- * con columnas fijas que ayudan a cuadrar pagos con la financiera).
+ * Tasa de comisión al cliente por financiera. El cliente paga la comisión
+ * en efectivo adicional o financiada dentro del precio registrado en la
+ * financiera (precio inflado).
  */
-const FINANCIERAS_CON_HOJA_PROPIA = ["KREDIYA", "PAYJOY", "ALCANOS"];
+const TASAS_COMISION: Record<string, number> = {
+  ADDI: 0.04165,
+  "SU+PAY": 0.019,
+  ALCANOS: 0.05,
+};
 
 /**
- * Headers de las hojas de conciliación por financiera (KREDIYA, PAYJOY).
+ * Tipo de schema de conciliación que usa cada financiera:
+ *  - "kredit-cuota": KREDIYA / PAYJOY (cuota inicial + descuento + financiado).
+ *  - "comision":      ADDI / SU+PAY / ALCANOS (tasa al cliente + modo de pago).
+ *  - "renting":       RENTING (cuota inicial real + financiado, máx iPhone $3M).
  */
-const HEADERS_FINANCIERA = [
+type TipoSchema = "kredit-cuota" | "comision" | "renting";
+
+const TIPO_POR_FINANCIERA: Record<string, TipoSchema> = {
+  KREDIYA: "kredit-cuota",
+  PAYJOY: "kredit-cuota",
+  ADDI: "comision",
+  "SU+PAY": "comision",
+  ALCANOS: "comision",
+  RENTING: "renting",
+};
+
+const FINANCIERAS_CON_HOJA_PROPIA = Object.keys(TIPO_POR_FINANCIERA);
+
+/**
+ * Headers específicos por tipo de schema. Cada uno refleja EXACTAMENTE
+ * lo que el equipo de conciliación necesita para cuadrar con la financiera.
+ */
+const HEADERS_KREDIT_CUOTA = [
   "FECHA",
   "ASESOR",
   "CEDULA",
@@ -67,20 +91,64 @@ const HEADERS_FINANCIERA = [
   "DATAFONO",
   "WOMPI",
   "OTRO",
+  "TOTAL PAGADO",
   "OBSERVACIONES",
-  "PAGO COMISION ADDI",
-  "COMISION ADDI",
-  "PRECIO ADDI",
-  "PAGO COMISION SUPAY",
-  "COMISION SUPAY",
-  "PRECIO SUPAY",
-  "PORCENTAJE RENTING",
-  "INICIAL RENTING",
-  "PAGO COMISION ALCANOS",
-  "COMISION ALCANOS",
-  "PRECIO ALCANOS",
 ];
 
+const HEADERS_COMISION = [
+  "FECHA",
+  "ASESOR",
+  "CEDULA",
+  "CLIENTE",
+  "MARCA",
+  "EQUIPO",
+  "COLOR",
+  "IMEI",
+  "VALOR VENTA",
+  "TASA %",
+  "MODO COMISION",
+  "COMISION EN $",
+  "PRECIO REGISTRADO EN FINANCIERA",
+  "EFECTIVO",
+  "CAJA",
+  "TRANSFERENCIA",
+  "NEQUI",
+  "DATAFONO",
+  "WOMPI",
+  "OTRO",
+  "TOTAL PAGADO",
+  "OBSERVACIONES",
+];
+
+const HEADERS_RENTING = [
+  "FECHA",
+  "ASESOR",
+  "CEDULA",
+  "CLIENTE",
+  "MARCA",
+  "EQUIPO",
+  "COLOR",
+  "IMEI",
+  "VALOR VENTA",
+  "% INICIAL",
+  "INICIAL PAGADO",
+  "FINANCIADO",
+  "EFECTIVO",
+  "CAJA",
+  "TRANSFERENCIA",
+  "NEQUI",
+  "DATAFONO",
+  "WOMPI",
+  "OTRO",
+  "TOTAL PAGADO",
+  "OBSERVACIONES",
+];
+
+/**
+ * HEADERS_VENTAS: hoja maestra 'Ventas 2026'. Contiene TODAS las columnas
+ * específicas de cada financiera (al final). Mantener compatibilidad con
+ * datos históricos — NO alterar posiciones de columnas ya existentes.
+ */
 const HEADERS_VENTAS = [
   "FECHA",
   "ASESOR",
@@ -103,6 +171,17 @@ const HEADERS_VENTAS = [
   "OTRO",
   "TOTAL ABONADO",
   "OBSERVACIONES",
+  "PAGO COMISION ADDI",
+  "COMISION ADDI",
+  "PRECIO ADDI",
+  "PAGO COMISION SUPAY",
+  "COMISION SUPAY",
+  "PRECIO SUPAY",
+  "PORCENTAJE RENTING",
+  "INICIAL RENTING",
+  "PAGO COMISION ALCANOS",
+  "COMISION ALCANOS",
+  "PRECIO ALCANOS",
 ];
 
 /**
@@ -127,16 +206,10 @@ export type VentaInput = {
   valorTotal: number;
   porcentajeCuota?: number;
   /**
-   * Solo para KREDIYA / PAYJOY. Es la cuota inicial REAL que el asesor
-   * cobra al cliente — puede ser menor al valor % oficial cuando se le
-   * hace descuento. La suma de medios de pago debe cuadrar con este valor.
+   * Solo para KREDIYA / PAYJOY. Cuota inicial REAL que cobra el asesor;
+   * puede ser menor al valor % oficial si se hizo descuento.
    */
   valorRecibir?: number;
-  /**
-   * Desglose completo de medios de pago. Cada entrada es un medio del
-   * catálogo con su valor. Los medios fuera de los core se agrupan en
-   * "OTRO" en Ventas 2026 y quedan granulares en DETALLE_PAGOS.
-   */
   pagos: EntradaPago[];
   observaciones?: string;
   pagoComisionAddi?: string;
@@ -168,6 +241,16 @@ function nombreHojaFinanciera(financiera: string): string | null {
   return `${f} 2026`;
 }
 
+function headersParaFinanciera(financiera: string): string[] | null {
+  const f = (financiera || "").trim().toUpperCase();
+  const tipo = TIPO_POR_FINANCIERA[f];
+  if (!tipo) return null;
+  if (tipo === "kredit-cuota") return HEADERS_KREDIT_CUOTA;
+  if (tipo === "comision") return HEADERS_COMISION;
+  if (tipo === "renting") return HEADERS_RENTING;
+  return null;
+}
+
 async function asegurarHojaFinanciera(
   libroId: string,
   financiera: string
@@ -176,8 +259,10 @@ async function asegurarHojaFinanciera(
   if (!nombre) return null;
   const hojas = await listarHojas(libroId);
   if (hojas.includes(nombre)) return nombre;
+  const headers = headersParaFinanciera(financiera);
+  if (!headers) return null;
   await crearHoja(libroId, nombre);
-  await escribirRango(libroId, `'${nombre}'!A1`, [HEADERS_FINANCIERA]);
+  await escribirRango(libroId, `'${nombre}'!A1`, [headers]);
   return nombre;
 }
 
@@ -219,8 +304,7 @@ async function marcarVendidoEnInventario(
 /**
  * Agrupa un array de EntradaPago en un mapa de monto por medio core.
  * Medios dinámicos (no-core) se suman en el balde "OTRO" y se listan en
- * un texto "detalle" para adjuntar a OBSERVACIONES — así el resumen de
- * Ventas 2026 no pierde info aunque el medio no tenga columna propia.
+ * un texto "detalle" para adjuntar a OBSERVACIONES.
  */
 function agruparPagosParaResumen(pagos: EntradaPago[]): {
   core: Record<string, number>;
@@ -242,32 +326,164 @@ function agruparPagosParaResumen(pagos: EntradaPago[]): {
     if (coreSet.has(medio)) {
       core[medio] = (core[medio] || 0) + valor;
     } else {
-      // Medio dinámico → sumarlo al balde OTRO y recordar el detalle
       core["OTRO"] = (core["OTRO"] || 0) + valor;
       otrosMap[medio] = (otrosMap[medio] || 0) + valor;
     }
   }
 
   const detalleOtros = Object.entries(otrosMap)
-    .map(
-      ([medio, valor]) => `${medio}: $${valor.toLocaleString("es-CO")}`
-    )
+    .map(([medio, valor]) => `${medio}: $${valor.toLocaleString("es-CO")}`)
     .join(" | ");
 
   return { core, detalleOtros, total };
 }
 
 /**
- * Ejecuta el cierre de venta completo. Ver doc del archivo arriba para
- * las pestañas que toca. Lanza error si el equipo ya no está disponible
- * o si alguna escritura falla en Sheets.
+ * Contexto para construir la fila de la hoja financiera específica.
+ */
+type ContextoFila = {
+  fechaHoy: string;
+  venta: VentaInput;
+  core: Record<string, number>;
+  totalAbonado: number;
+  observacionesFinal: string;
+};
+
+/**
+ * Formatea tasa de comisión como porcentaje legible (ej: "5%", "1.9%", "4.165%").
+ */
+function formatearTasa(tasa: number): string {
+  const pct = tasa * 100;
+  return `${Number.isInteger(pct) ? pct : pct.toFixed(3).replace(/\.?0+$/, "")}%`;
+}
+
+/**
+ * Construye la fila de la hoja financiera específica según el tipo de schema.
+ * Devuelve null si la financiera no tiene hoja propia.
+ */
+function filaParaFinanciera(financiera: string, ctx: ContextoFila): any[] | null {
+  const f = (financiera || "").trim().toUpperCase();
+  const tipo = TIPO_POR_FINANCIERA[f];
+  if (!tipo) return null;
+
+  const { fechaHoy, venta, core, totalAbonado, observacionesFinal } = ctx;
+  const baseIdentidad = [
+    fechaHoy,
+    venta.asesor,
+    venta.cedula,
+    venta.clienteNombre,
+    venta.marca,
+    venta.equipo,
+    venta.color || "",
+    venta.imei,
+  ];
+  const mediosCoreCols = [
+    core["EFECTIVO"] || "",
+    core["CAJA"] || "",
+    core["TRANSFERENCIA"] || "",
+    core["NEQUI"] || "",
+    core["DATAFONO"] || "",
+    core["WOMPI"] || "",
+    core["OTRO"] || "",
+  ];
+
+  if (tipo === "kredit-cuota") {
+    const pct = venta.porcentajeCuota || 0;
+    const valorPctOficial = pct > 0 ? Math.round((venta.valorTotal * pct) / 100) : 0;
+    const valorRecibir =
+      venta.valorRecibir !== undefined && venta.valorRecibir !== null
+        ? venta.valorRecibir
+        : totalAbonado;
+    const descuento = valorPctOficial > 0 ? valorPctOficial - valorRecibir : 0;
+    const valorFinanciado = pct > 0 ? venta.valorTotal - valorPctOficial : 0;
+    return [
+      ...baseIdentidad,
+      venta.valorTotal,
+      venta.porcentajeCuota ?? "",
+      valorPctOficial || "",
+      valorRecibir,
+      descuento || "",
+      valorFinanciado || "",
+      ...mediosCoreCols,
+      totalAbonado,
+      observacionesFinal,
+    ];
+  }
+
+  if (tipo === "comision") {
+    const tasa = TASAS_COMISION[f] || 0;
+    let modoComision = "";
+    let comisionEnDolares: number | "" = "";
+    let precioRegistrado: number = venta.valorTotal;
+
+    if (f === "ADDI") {
+      modoComision = venta.pagoComisionAddi || "";
+      if (modoComision === "efectivo") {
+        comisionEnDolares = venta.comisionAddi || 0;
+        precioRegistrado = venta.valorTotal;
+      } else if (modoComision === "addi" || modoComision === "dentro") {
+        precioRegistrado = venta.precioAddi || venta.valorTotal;
+        comisionEnDolares = precioRegistrado - venta.valorTotal;
+      }
+    } else if (f === "SU+PAY") {
+      modoComision = venta.pagoComisionSupay || "";
+      if (modoComision === "efectivo") {
+        comisionEnDolares = venta.comisionSupay || 0;
+        precioRegistrado = venta.valorTotal;
+      } else if (modoComision === "supay" || modoComision === "dentro") {
+        precioRegistrado = venta.precioSupay || venta.valorTotal;
+        comisionEnDolares = precioRegistrado - venta.valorTotal;
+      }
+    } else if (f === "ALCANOS") {
+      modoComision = venta.pagoComisionAlcanos || "";
+      if (modoComision === "efectivo") {
+        comisionEnDolares = venta.comisionAlcanos || 0;
+        precioRegistrado = venta.valorTotal;
+      } else if (modoComision === "alcanos" || modoComision === "dentro") {
+        precioRegistrado = venta.precioAlcanos || venta.valorTotal;
+        comisionEnDolares = precioRegistrado - venta.valorTotal;
+      }
+    }
+
+    return [
+      ...baseIdentidad,
+      venta.valorTotal,
+      formatearTasa(tasa),
+      modoComision || "",
+      comisionEnDolares || "",
+      precioRegistrado,
+      ...mediosCoreCols,
+      totalAbonado,
+      observacionesFinal,
+    ];
+  }
+
+  if (tipo === "renting") {
+    const inicial = venta.inicialRenting || 0;
+    const financiado = venta.valorTotal - inicial;
+    return [
+      ...baseIdentidad,
+      venta.valorTotal,
+      venta.porcentajeRenting ?? "",
+      inicial || "",
+      financiado || "",
+      ...mediosCoreCols,
+      totalAbonado,
+      observacionesFinal,
+    ];
+  }
+
+  return null;
+}
+
+/**
+ * Ejecuta el cierre de venta completo.
  */
 export async function guardarVenta(
   libroId: string,
   hojaInv: string,
   venta: VentaInput
 ): Promise<{ ok: true; filaVenta: number }> {
-  // Re-verificar que no lo hayan vendido en paralelo
   const prod = await buscarPorImei(libroId, venta.imei);
   if (!prod) throw new Error(`IMEI ${venta.imei} no existe en inventario`);
   if (!prod.disponible) {
@@ -281,7 +497,6 @@ export async function guardarVenta(
   // 1) Marcar vendido en inventario
   await marcarVendidoEnInventario(libroId, hojaInv, venta.filaInventario, fechaHoy);
 
-  // Normalizar y agrupar el desglose de pagos
   const pagosLimpios: EntradaPago[] = (venta.pagos || [])
     .map((p) => ({
       medio: normalizarNombreMedio(p.medio),
@@ -292,17 +507,6 @@ export async function guardarVenta(
   const { core, detalleOtros, total: totalAbonado } =
     agruparPagosParaResumen(pagosLimpios);
 
-  // Cálculos específicos para financiera (si aplica)
-  const pct = venta.porcentajeCuota || 0;
-  const valorPctOficial = pct > 0 ? Math.round((venta.valorTotal * pct) / 100) : 0;
-  const valorRecibir =
-    venta.valorRecibir !== undefined && venta.valorRecibir !== null
-      ? venta.valorRecibir
-      : totalAbonado;
-  const descuento = valorPctOficial > 0 ? valorPctOficial - valorRecibir : 0;
-  const valorFinanciado = pct > 0 ? venta.valorTotal - valorPctOficial : 0;
-
-  // Observaciones enriquecidas con el detalle de medios dinámicos
   const observacionesFinal = [
     venta.observaciones?.trim(),
     detalleOtros ? `[Otros medios: ${detalleOtros}]` : "",
@@ -310,7 +514,7 @@ export async function guardarVenta(
     .filter(Boolean)
     .join(" ");
 
-  // 2) Escribir fila resumen en Ventas 2026
+  // 2) Escribir fila resumen en Ventas 2026 (master)
   const hojaVen = await asegurarHojaVentas(libroId);
   const filaVentas = [
     fechaHoy,
@@ -324,7 +528,7 @@ export async function guardarVenta(
     venta.financiera,
     venta.valorTotal,
     venta.porcentajeCuota ?? "",
-    "", // VALOR CUOTA (legado — ahora se usa valorRecibir en KREDIYA/PAYJOY)
+    "", // VALOR CUOTA (legado)
     core["EFECTIVO"] || "",
     core["CAJA"] || "",
     core["TRANSFERENCIA"] || "",
@@ -348,7 +552,7 @@ export async function guardarVenta(
   ];
   const { filaEscrita } = await agregarFila(libroId, hojaVen, filaVentas);
 
-  // 3) Escribir DETALLE_PAGOS — fila por cada medio usado (fuente granular)
+  // 3) Escribir DETALLE_PAGOS granular (1 fila por medio)
   await escribirDetallePagos(libroId, {
     fecha: fechaHoy,
     ventaId: filaEscrita,
@@ -360,45 +564,19 @@ export async function guardarVenta(
     pagos: pagosLimpios,
   });
 
-  // 4) Hoja de conciliación financiera (KREDIYA / PAYJOY / ALCANOS)
+  // 4) Hoja financiera específica con columnas propias de esa financiera
   const hojaFin = await asegurarHojaFinanciera(libroId, venta.financiera);
   if (hojaFin) {
-    const filaFinanciera = [
+    const filaFinanciera = filaParaFinanciera(venta.financiera, {
       fechaHoy,
-      venta.asesor,
-      venta.cedula,
-      venta.clienteNombre,
-      venta.marca,
-      venta.equipo,
-      venta.color || "",
-      venta.imei,
-      venta.valorTotal,
-      venta.porcentajeCuota ?? "",
-      valorPctOficial || "",
-      valorRecibir,
-      descuento,
-      valorFinanciado || "",
-      core["EFECTIVO"] || "",
-      core["CAJA"] || "",
-      core["TRANSFERENCIA"] || "",
-      core["NEQUI"] || "",
-      core["DATAFONO"] || "",
-      core["WOMPI"] || "",
-      core["OTRO"] || "",
+      venta,
+      core,
+      totalAbonado,
       observacionesFinal,
-      venta.pagoComisionAddi ?? "",
-      venta.comisionAddi ?? "",
-      venta.precioAddi ?? "",
-      venta.pagoComisionSupay ?? "",
-      venta.comisionSupay ?? "",
-      venta.precioSupay ?? "",
-      venta.porcentajeRenting ?? "",
-      venta.inicialRenting ?? "",
-      venta.pagoComisionAlcanos ?? "",
-      venta.comisionAlcanos ?? "",
-      venta.precioAlcanos ?? "",
-    ];
-    await agregarFila(libroId, hojaFin, filaFinanciera);
+    });
+    if (filaFinanciera) {
+      await agregarFila(libroId, hojaFin, filaFinanciera);
+    }
   }
 
   // 5) Si hubo efectivo, registrar INGRESO en Caja 2026
