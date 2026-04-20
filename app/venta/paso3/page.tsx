@@ -299,8 +299,8 @@ function Paso3Pago() {
         });
         return;
       }
-    } else if (esKrediyaOPayJoy) {
-      if (!pctNum) {
+    } else if (esKrediyaOPayJoy || esKupoAndroid) {
+      if (esKrediyaOPayJoy && !pctNum) {
         setEstado({
           tipo: "error",
           mensaje: "Selecciona el % inicial que quedó con la financiera",
@@ -590,37 +590,56 @@ function Paso3Pago() {
                 <span>80%</span>
               </div>
             </div>
-            <div>
-              <label className="text-xs text-muted block mb-1">O ingresa la cuota inicial ($)</label>
-              <input
-                type="number"
-                min={0}
-                value={form.cuotaKupo !== "" ? form.cuotaKupo : (inicialKupo > 0 ? String(inicialKupo) : "")}
-                onChange={(e) => actualizar("cuotaKupo", e.target.value)}
-                className="w-full px-3 py-2 bg-[#141821] border border-[#2a2f3b] rounded-lg text-white focus:outline-none focus:border-brand text-sm"
-                placeholder="Ej: 500.000"
-              />
-            </div>
-            <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted">Cuota inicial ({Number.isInteger(pctKupoReal) ? pctKupoReal : pctKupoReal.toFixed(2)}%):</span>
-                <span className="font-bold text-white">${inicialKupo.toLocaleString("es-CO")}</span>
+            {precioKupo > 0 && (
+              <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2">
+                <div className="flex justify-between">
+                  <span className="text-muted">
+                    Cuota {Number.isInteger(pctKupoReal) ? pctKupoReal : pctKupoReal.toFixed(2)}% calculada:
+                  </span>
+                  <span className="text-white font-mono">
+                    ${inicialKupo.toLocaleString("es-CO")}
+                  </span>
+                </div>
+                <div className="text-[10px] text-muted mt-1">
+                  Lo que +Kupo espera que cobres según el porcentaje.
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">+Kupo financia:</span>
-                <span className={`font-bold ${financiadoKupo > 3_000_000 ? "text-red-400" : "text-white"}`}>
-                  ${financiadoKupo.toLocaleString("es-CO")}
+            )}
+            <Numero
+              label="Valor a recibir (cuota inicial real que paga el cliente) *"
+              value={form.valorRecibir}
+              onChange={(v) => actualizar("valorRecibir", v)}
+              placeholder={inicialKupo > 0 ? String(inicialKupo) : "ej: 500.000"}
+            />
+            {valorRecibirNum > 0 && inicialKupo > 0 && (
+              <div className="text-xs bg-[#141821] border border-[#2a2f3b] rounded p-2 flex justify-between">
+                <span className="text-muted">
+                  {inicialKupo - valorRecibirNum > 0 ? "Descuento al cliente:" : inicialKupo - valorRecibirNum < 0 ? "Pagó de más:" : "Sin descuento:"}
+                </span>
+                <span className={
+                  inicialKupo === valorRecibirNum ? "text-green-400 font-mono" :
+                  inicialKupo > valorRecibirNum ? "text-yellow-400 font-mono" :
+                  "text-blue-400 font-mono"
+                }>
+                  ${Math.abs(inicialKupo - valorRecibirNum).toLocaleString("es-CO")}
                 </span>
               </div>
-              {financiadoKupo > 3_000_000 ? (
-                <p className="text-red-400 text-xs">+Kupo financia máximo $3.000.000. Sube el porcentaje.</p>
-              ) : (
-                <p className="text-green-400 text-xs">Financiación válida</p>
-              )}
-            </div>
-            <p className="text-xs text-muted">
-              Agrega medios de pago abajo que sumen el inicial (${inicialKupo.toLocaleString("es-CO")}).
-            </p>
+            )}
+            {precioKupo > 0 && valorRecibirNum > 0 && (
+              <div className="border-t border-[#2a2f3b] pt-2 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted">+Kupo financia:</span>
+                  <span className={`font-bold ${(precioKupo - valorRecibirNum) > 3_000_000 ? "text-red-400" : "text-white"}`}>
+                    ${(precioKupo - valorRecibirNum).toLocaleString("es-CO")}
+                  </span>
+                </div>
+                {(precioKupo - valorRecibirNum) > 3_000_000 ? (
+                  <p className="text-red-400 text-xs">+Kupo financia máximo $3.000.000. Aumenta el valor a recibir.</p>
+                ) : (
+                  <p className="text-green-400 text-xs">Financiación válida</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -700,7 +719,9 @@ function Paso3Pago() {
               : esKrediyaOPayJoy
                 ? " — debe sumar el valor a recibir (cuota inicial real)"
                 : esKupoIphone
-                  ? ` — debe sumar el inicial ($${inicialKupo.toLocaleString("es-CO")})`
+                  ? ` — debe sumar el inicial (${inicialKupo.toLocaleString("es-CO")})`
+                  : esKupoAndroid
+                  ? " — debe sumar el valor a recibir (cuota inicial real)"
                   : " — lo que pagó el cliente hoy"}
           </p>
           {/* UX: el asesor CONSTRUYE el desglose agregando medios uno
@@ -873,6 +894,12 @@ function Paso3Pago() {
                   </div>
                 </>
               )}
+              {esKupoAndroid && valorRecibirNum > 0 && (
+                <div className="flex justify-between text-muted">
+                  <span>Valor a recibir (inicial real):</span>
+                  <span className="text-white font-mono">${valorRecibirNum.toLocaleString("es-CO")}</span>
+                </div>
+              )}
 
               <div className="flex justify-between text-muted">
                 <span>Suma medios de pago:</span>
@@ -888,7 +915,7 @@ function Paso3Pago() {
                 </div>
               )}
 
-              {esKrediyaOPayJoy && valorRecibirNum > 0 && (
+              {(esKrediyaOPayJoy || esKupoAndroid) && valorRecibirNum > 0 && (
                 <div className="flex justify-between font-medium pt-1 border-t border-[#2a2f3b]">
                   <span>Diferencia medios vs a recibir:</span>
                   <span
