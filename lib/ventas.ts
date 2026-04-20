@@ -67,6 +67,9 @@ const HEADERS_FINANCIERA = [
   "WOMPI",
   "OTRO",
   "OBSERVACIONES",
+  "PAGO COMISION ADDI",
+  "COMISION ADDI",
+  "PRECIO ADDI",
 ];
 
 const HEADERS_VENTAS = [
@@ -127,6 +130,9 @@ export type VentaInput = {
    */
   pagos: EntradaPago[];
   observaciones?: string;
+  pagoComisionAddi?: string;
+  comisionAddi?: number;
+  precioAddi?: number;
   asesor: string;
 };
 
@@ -311,6 +317,9 @@ export async function guardarVenta(
     core["OTRO"] || "",
     totalAbonado,
     observacionesFinal,
+    venta.pagoComisionAddi ?? "",
+    venta.comisionAddi ?? "",
+    venta.precioAddi ?? "",
   ];
   const { filaEscrita } = await agregarFila(libroId, hojaVen, filaVentas);
 
