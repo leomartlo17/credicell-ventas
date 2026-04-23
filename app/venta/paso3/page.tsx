@@ -271,15 +271,17 @@ function Paso3Pago() {
   const valorRecibirNum = Number(form.valorRecibir) || 0;
   const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - valorRecibirNum : 0;
   const diferenciaMedios = valorRecibirNum - pagadoNum;
-  // KREDIYA, ADELANTOS (= PAYJOY) y BOGOTA usan el flujo de cuota inicial +
-  // descuento + financiado. Mantengo el alias "PAYJOY" por compatibilidad.
+  // Solo KREDIYA y ADELANTOS (= PAYJOY) usan el flujo de cuota inicial +
+  // descuento + financiado. BOGOTA es tipo comisión (tasa 0) — solo cupo.
+  // +KUPO tiene su propio flujo separado (esKupoIphone / esKupoAndroid).
   const esKrediyaOAdelantos =
     form.financiera === "KREDIYA" ||
     form.financiera === "ADELANTOS" ||
-    form.financiera === "PAYJOY" ||
-    form.financiera === "BOGOTA";
+    form.financiera === "PAYJOY";
   // Alias para no romper referencias existentes en este archivo.
   const esKrediyaOPayJoy = esKrediyaOAdelantos;
+  // BOGOTA como principal: solo pide valor total (cupo) y opcionalmente medios.
+  const esBogota = form.financiera === "BOGOTA";
 
   // +Kupo con iPhone: flujo especial con % de inicial
   const esKupoIphone =
@@ -1559,7 +1561,7 @@ function Paso3Pago() {
 
       <button
         onClick={confirmar}
-        disabled={estado.tipo === "guardando" || (esAddi && !form.pagoComisionAddi) || (esAddi && form.pagoComisionAddi === "efectivo" && diferenciaAddi !== 0) || (esSupay && !form.pagoComisionSupay) || (esSupay && form.pagoComisionSupay === "efectivo" && diferenciaSupay !== 0) || (!esAddi && !esSupay && seleccionados.length > 0 && diferenciaMedios !== 0) || cofInvalido}
+        disabled={estado.tipo === "guardando" || (esAddi && !form.pagoComisionAddi) || (esAddi && form.pagoComisionAddi === "efectivo" && diferenciaAddi !== 0) || (esSupay && !form.pagoComisionSupay) || (esSupay && form.pagoComisionSupay === "efectivo" && diferenciaSupay !== 0) || (esKrediyaOPayJoy && seleccionados.length > 0 && diferenciaMedios !== 0) || cofInvalido}
         className="w-full mt-6 py-4 bg-brand hover:bg-brand-light disabled:opacity-40 text-[#0b0d12] font-bold rounded-lg text-lg"
       >
         {estado.tipo === "guardando" ? "Guardando..." : "Confirmar venta"}
