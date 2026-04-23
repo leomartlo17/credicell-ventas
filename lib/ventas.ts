@@ -53,10 +53,14 @@ const TASAS_COMISION: Record<string, number> = {
 
 /**
  * Tipo de schema de conciliación que usa cada financiera:
- *  - "kredit-cuota": KREDIYA / ADELANTOS / +KUPO / BOGOTA (cuota inicial +
- *    descuento + financiado). Todas comparten las mismas columnas.
- *  - "comision":      ADDI / SU+PAY / ALCANOS (tasa al cliente + modo de pago).
- *  - "renting":       RENTING (cuota inicial real + financiado, máx iPhone $3M).
+ *  - "kredit-cuota": KREDIYA / ADELANTOS / +KUPO (cuota inicial + descuento +
+ *    financiado). Solo estas 3 exigen cuota inicial y solo estas pueden ser
+ *    la financiera PRINCIPAL de una venta.
+ *  - "comision":     ADDI / SU+PAY / ALCANOS / BOGOTA. Registran un cupo
+ *    aprobado (valor) + tasa (si cobra comisión) + modo de pago.
+ *    - ADDI: 4.165%, SU+PAY: 1.9%, ALCANOS: 5%.
+ *    - BOGOTA: 0% (no cobra comisión, solo registra el cupo).
+ *  - "renting":      RENTING (cuota inicial real + financiado, máx iPhone $3M).
  */
 type TipoSchema = "kredit-cuota" | "comision" | "renting";
 
@@ -64,12 +68,53 @@ const TIPO_POR_FINANCIERA: Record<string, TipoSchema> = {
   KREDIYA: "kredit-cuota",
   ADELANTOS: "kredit-cuota",
   "+KUPO": "kredit-cuota",
-  BOGOTA: "kredit-cuota",
   ADDI: "comision",
   "SU+PAY": "comision",
   ALCANOS: "comision",
+  BOGOTA: "comision",       // tasa 0% — solo registra el cupo aprobado
   RENTING: "renting",
 };
+
+/**
+ * Financieras que SIEMPRE exigen cuota inicial. SOLO estas pueden ser
+ * financiera PRINCIPAL (regla de negocio San Esteban). Cualquier otra
+ * financiera (BOGOTA, ADDI, SU+PAY, ALCANOS) únicamente puede usarse
+ * como SECUNDARIA para cubrir la cuota inicial. RENTING es un caso
+ * aparte — solo iPhone, válida como principal en ese caso.
+ */
+export const FINANCIERAS_CUOTA_INICIAL = ["KREDIYA", "+KUPO", "ADELANTOS"] as const;
+
+export const FINANCIERAS_VALIDAS_PRINCIPAL = [
+  "KREDIYA",
+  "+KUPO",
+  "ADELANTOS",
+  "RENTING",   // solo iPhone (el filtro de UI aplica)
+  "Contado",   // venta de contado sin financiación
+] as const;
+
+export function esFinancieraValidaPrincipal(f: string): boolean {
+  const n = normalizarFinanciera(f);
+  return (FINANCIERAS_VALIDAS_PRINCIPAL as readonly string[]).includes(n) || n === "CONTADO";
+}
+
+export function puedeCombinarseConCoFinanciera(
+  principal: string,
+  secundaria: string
+): { ok: boolean; razon?: string } {
+  const p = normalizarFinanciera(principal);
+  const s = normalizarFinanciera(secundaria);
+  if (!p || !s) return { ok: false, razon: "Faltan financieras" };
+  if (p === s) return { ok: false, razon: "La secundaria no puede ser igual a la principal" };
+  const esP3 = (FINANCIERAS_CUOTA_INICIAL as readonly string[]).includes(p);
+  const esS3 = (FINANCIERAS_CUOTA_INICIAL as readonly string[]).includes(s);
+  if (esP3 && esS3) {
+    return {
+      ok: false,
+      razon: `${p} y ${s} no pueden combinarse entre sí (ambas piden cuota inicial). Las secundarias válidas son: BOGOTA, ADDI, SU+PAY, ALCANOS.`,
+    };
+  }
+  return { ok: true };
+}
 
 /**
  * Alias de financieras. Si entra un nombre histórico o alternativo, se
@@ -227,9 +272,14 @@ export type EntradaPago = {
  */
 export type CoFinanciacion = {
   financiera: string;
-  valor: number;                // monto asignado a esta financiera
-  porcentajeCuota?: number;     // solo aplica si es tipo kredit-cuota
-  valorRecibir?: number;        // cuota inicial real cobrada (solo kredit-cuota)
+  valor: number;                // monto asignado a esta financiera (cuota inicial de la principal)
+  // --- Si la secundaria es tipo kredit-cuota (BOGOTA) ---
+  porcentajeCuota?: number;
+  valorRecibir?: number;        // cuota inicial real cobrada
+  // --- Si la secundaria es tipo comision (ADDI / SU+PAY / ALCANOS) ---
+  modoComision?: string;        // "efectivo" (cliente paga comisión en caja) | "dentro" (queda dentro del crédito)
+  comisionValor?: number;       // valor en $ de la comisión (= valor * tasa de la financiera)
+  precioInflado?: number;       // precio que se registra en la financiera si modo="dentro" (= valor / (1-tasa))
 };
 
 export type VentaInput = {
@@ -263,7 +313,15 @@ export type VentaInput = {
   comisionAlcanos?: number;
   precioAlcanos?: number;
   asesor: string;
-  /** Hasta 1 co-financiación adicional. Si el cliente usó 2 financieras. */
+  /**
+   * Co-financiaciones (N financieras secundarias). El cliente puede dividir
+   * la cuota inicial de la principal entre varias financieras. La suma de
+   * los "valor" de cada co-financiación + el efectivo/medios entregados
+   * debe cuadrar con la cuota inicial de la principal.
+   * Si el array está vacío, la cuota inicial la paga 100% el cliente en caja.
+   */
+  coFinanciaciones?: CoFinanciacion[];
+  /** @deprecated — se mantiene para compat; si viene, se convierte en coFinanciaciones[0] */
   coFinanciacion?: CoFinanciacion;
 };
 
@@ -453,6 +511,7 @@ function filaParaFinanciera(financiera: string, ctx: ContextoFila): any[] | null
 
   if (tipo === "comision") {
     const tasa = TASAS_COMISION[f] || 0;
+    // BOGOTA tiene tasa 0 — no pide modo comisión, solo registra el cupo.
     let modoComision = "";
     let comisionEnDolares: number | "" = "";
     let precioRegistrado: number = venta.valorTotal;
@@ -489,7 +548,7 @@ function filaParaFinanciera(financiera: string, ctx: ContextoFila): any[] | null
     return [
       ...baseIdentidad,
       venta.valorTotal,
-      formatearTasa(tasa),
+      tasa > 0 ? formatearTasa(tasa) : "",   // BOGOTA (tasa 0) deja TASA % vacío
       modoComision || "",
       comisionEnDolares || "",
       precioRegistrado,
@@ -548,10 +607,15 @@ export async function guardarVenta(
   const { core, detalleOtros, total: totalAbonado } =
     agruparPagosParaResumen(pagosLimpios);
 
+  // Consolidar co-financiaciones: aceptar tanto el array nuevo como el objeto legado singular.
+  const cofs: CoFinanciacion[] = [
+    ...(Array.isArray(venta.coFinanciaciones) ? venta.coFinanciaciones : []),
+    ...(venta.coFinanciacion ? [venta.coFinanciacion] : []),
+  ].filter((c) => c && c.financiera && Number(c.valor) > 0);
+
   // Nota de co-financiación para OBSERVACIONES (si aplica)
-  const cof = venta.coFinanciacion;
-  const cofNotaObs = cof && cof.financiera && Number(cof.valor) > 0
-    ? `[+Co-financiera: ${cof.financiera.toUpperCase()} $${Number(cof.valor).toLocaleString("es-CO")}]`
+  const cofNotaObs = cofs.length > 0
+    ? "[+Co-financieras: " + cofs.map((c) => `${c.financiera.toUpperCase()} $${Number(c.valor).toLocaleString("es-CO")}`).join(", ") + "]"
     : "";
 
   const observacionesFinal = [
@@ -613,17 +677,14 @@ export async function guardarVenta(
   });
 
   // 4) Hoja financiera PRINCIPAL — con columnas propias de esa financiera.
-  //    Si hay co-financiación, la principal recibe solo el monto asignado a
-  //    ella (valorFinancieraPrincipal si viene, si no el total).
-  const valorPrincipal =
-    Number(venta.valorFinancieraPrincipal) > 0
-      ? Number(venta.valorFinancieraPrincipal)
-      : venta.valorTotal;
+  //    La PRINCIPAL siempre registra el valor TOTAL del producto (no se
+  //    fracciona). La secundaria, si existe, registra el monto de la
+  //    cuota inicial que cubrió.
   const hojaFin = await asegurarHojaFinanciera(libroId, venta.financiera);
   if (hojaFin) {
     const filaFinanciera = filaParaFinanciera(venta.financiera, {
       fechaHoy,
-      venta: { ...venta, valorTotal: valorPrincipal },
+      venta,
       core,
       totalAbonado,
       observacionesFinal,
@@ -633,42 +694,64 @@ export async function guardarVenta(
     }
   }
 
-  // 4b) Co-financiación (si aplica) — escribe en la hoja de la SEGUNDA financiera
-  //     con el monto asignado a ella. NO duplica medios de pago ni caja — esos
-  //     se registran solo en la principal. La co-financiación es contable: deja
-  //     constancia de que ESE crédito existe y el valor que cubre.
-  if (cof && cof.financiera && Number(cof.valor) > 0) {
+  // 4b) Co-financiaciones — iterar sobre cada secundaria y escribirla en su hoja.
+  //     Regla: las secundarias cubren la CUOTA INICIAL de la principal.
+  //     Si la secundaria es tipo comisión y modo=efectivo, se registra en Caja.
+  for (const cof of cofs) {
+    const reglaOk = puedeCombinarseConCoFinanciera(venta.financiera, cof.financiera);
+    if (!reglaOk.ok) {
+      console.error(`Co-financiación inválida (${cof.financiera}): ${reglaOk.razon}`);
+      continue;
+    }
     try {
       const hojaFinSec = await asegurarHojaFinanciera(libroId, cof.financiera);
-      if (hojaFinSec) {
-        // Contexto virtual: financiera secundaria ve SU monto como "valorTotal"
-        // y NO se le asignan medios de pago (columnas de pago en 0/"").
-        const ventaSecundaria: VentaInput = {
-          ...venta,
-          financiera: cof.financiera,
-          valorTotal: Number(cof.valor),
-          porcentajeCuota: cof.porcentajeCuota,
-          valorRecibir: cof.valorRecibir,
-          // Sin medios — se anota en observaciones que es co-financiación
-          pagos: [],
-          coFinanciacion: undefined,  // evitar recursión
-        };
-        const coreVacio: Record<string, number> = {};
-        for (const m of Object.keys(core)) coreVacio[m] = 0;
-        const filaSec = filaParaFinanciera(cof.financiera, {
-          fechaHoy,
-          venta: ventaSecundaria,
-          core: coreVacio,
-          totalAbonado: 0,
-          observacionesFinal: `[Co-financiación junto con ${venta.financiera.toUpperCase()} $${valorPrincipal.toLocaleString("es-CO")}] ${venta.observaciones || ""}`.trim(),
+      if (!hojaFinSec) continue;
+      const finSec = normalizarFinanciera(cof.financiera);
+      const ventaSecundaria: VentaInput = {
+        ...venta,
+        financiera: cof.financiera,
+        valorTotal: Number(cof.valor),
+        porcentajeCuota: cof.porcentajeCuota,
+        valorRecibir: cof.valorRecibir,
+        pagos: [],
+        coFinanciaciones: undefined,
+        coFinanciacion: undefined,
+        pagoComisionAddi: finSec === "ADDI" ? cof.modoComision : undefined,
+        comisionAddi: finSec === "ADDI" ? cof.comisionValor : undefined,
+        precioAddi: finSec === "ADDI" ? cof.precioInflado : undefined,
+        pagoComisionSupay: finSec === "SU+PAY" ? cof.modoComision : undefined,
+        comisionSupay: finSec === "SU+PAY" ? cof.comisionValor : undefined,
+        precioSupay: finSec === "SU+PAY" ? cof.precioInflado : undefined,
+        pagoComisionAlcanos: finSec === "ALCANOS" ? cof.modoComision : undefined,
+        comisionAlcanos: finSec === "ALCANOS" ? cof.comisionValor : undefined,
+        precioAlcanos: finSec === "ALCANOS" ? cof.precioInflado : undefined,
+      };
+      const coreVacio: Record<string, number> = {};
+      for (const m of Object.keys(core)) coreVacio[m] = 0;
+      const filaSec = filaParaFinanciera(cof.financiera, {
+        fechaHoy,
+        venta: ventaSecundaria,
+        core: coreVacio,
+        totalAbonado: 0,
+        observacionesFinal: `[Cubre parte de cuota inicial de ${venta.financiera.toUpperCase()} — venta $${venta.valorTotal.toLocaleString("es-CO")}] ${venta.observaciones || ""}`.trim(),
+      });
+      if (filaSec) {
+        await agregarFila(libroId, hojaFinSec, filaSec);
+      }
+      if (cof.modoComision === "efectivo" && Number(cof.comisionValor) > 0) {
+        const { registrarMovimiento } = await import("@/lib/caja");
+        await registrarMovimiento(libroId, {
+          tipo: "INGRESO",
+          concepto: `COMISION ${finSec}`,
+          establecimiento: venta.clienteNombre,
+          monto: Number(cof.comisionValor),
+          asesor: venta.asesor,
+          referencia: `IMEI ${venta.imei} · CC ${venta.cedula}`,
+          observaciones: `Comisión ${finSec} ($${(cof.comisionValor as number).toLocaleString("es-CO")}) en efectivo — co-financiación con ${venta.financiera.toUpperCase()}`,
         });
-        if (filaSec) {
-          await agregarFila(libroId, hojaFinSec, filaSec);
-        }
       }
     } catch (e) {
-      // No bloquear la venta si falla la co-financiación — solo loggear.
-      console.error("Error escribiendo co-financiación:", e);
+      console.error(`Error escribiendo co-financiación ${cof.financiera}:`, e);
     }
   }
 

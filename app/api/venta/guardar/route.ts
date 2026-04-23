@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions, SessionConSede } from "@/lib/auth";
-import { guardarVenta, EntradaPago } from "@/lib/ventas";
+import { guardarVenta, EntradaPago, puedeCombinarseConCoFinanciera } from "@/lib/ventas";
 import { hojaInventario, buscarPorImei } from "@/lib/inventario";
 import { buscarPorCedula } from "@/lib/clientes";
 import { NextResponse } from "next/server";
@@ -54,13 +54,34 @@ const schema = z.object({
   // Monto asignado a la financiera principal (si hay co-financiación).
   // Si no viene, se asume que la principal cubre el valorTotal completo.
   valorFinancieraPrincipal: z.number().nonnegative().optional(),
-  // Co-financiación: una segunda financiera que cubre el resto del valor.
+  // Co-financiaciones: N financieras secundarias que cubren partes de la
+  // cuota inicial de la principal. La suma de los `valor` debe cuadrar con
+  // la cuota inicial (la app valida en front; backend acepta lo que venga).
+  coFinanciaciones: z
+    .array(
+      z.object({
+        financiera: z.string().min(1),
+        valor: z.number().positive(),
+        // Si la secundaria es tipo kredit-cuota (BOGOTA)
+        porcentajeCuota: z.number().nonnegative().optional(),
+        valorRecibir: z.number().nonnegative().optional(),
+        // Si la secundaria es tipo comisión (ADDI / SU+PAY / ALCANOS)
+        modoComision: z.string().optional(),
+        comisionValor: z.number().nonnegative().optional(),
+        precioInflado: z.number().nonnegative().optional(),
+      })
+    )
+    .optional(),
+  // Legado — acepta objeto único para compatibilidad
   coFinanciacion: z
     .object({
       financiera: z.string().min(1),
       valor: z.number().positive(),
       porcentajeCuota: z.number().nonnegative().optional(),
       valorRecibir: z.number().nonnegative().optional(),
+      modoComision: z.string().optional(),
+      comisionValor: z.number().nonnegative().optional(),
+      precioInflado: z.number().nonnegative().optional(),
     })
     .optional(),
 });
@@ -144,6 +165,22 @@ export async function POST(req: Request) {
 
     const asesor = session.user.name || session.user.email || "desconocido";
     const pagos = normalizarPagos(d);
+
+    // Validar regla de co-financiación para cada una (KREDIYA/+KUPO/ADELANTOS
+    // no se combinan entre sí). Aplica tanto al array nuevo como al legado.
+    const todasCofs = [
+      ...(d.coFinanciaciones || []),
+      ...(d.coFinanciacion ? [d.coFinanciacion] : []),
+    ];
+    for (const cof of todasCofs) {
+      const chk = puedeCombinarseConCoFinanciera(d.financiera, cof.financiera);
+      if (!chk.ok) {
+        return NextResponse.json(
+          { error: chk.razon || "Co-financiación inválida" },
+          { status: 400 }
+        );
+      }
+    }
 
     const { filaVenta } = await guardarVenta(sede.libroId, hojaInv, {
       cedula: d.cedula,
