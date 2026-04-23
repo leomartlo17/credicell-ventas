@@ -685,11 +685,9 @@ function Paso3Pago() {
           >
             <option value="">-- Seleccionar --</option>
             {sedeInfo?.financieras.filter((f) => {
-              // Solo KREDIYA, +KUPO, ADELANTOS, RENTING (si iPhone) y Contado
-              // pueden ser financiera PRINCIPAL. El resto (BOGOTA/ADDI/SU+PAY/ALCANOS)
-              // solo puede aparecer como co-financiera.
-              const validasPrincipal = ["KREDIYA", "+KUPO", "ADELANTOS", "RENTING", "Contado"];
-              if (!validasPrincipal.includes(f)) return false;
+              // Todas las financieras pueden ser PRINCIPAL (KREDIYA, +KUPO,
+              // ADELANTOS, BOGOTA, ADDI, SU+PAY, ALCANOS, RENTING, Contado).
+              // Excepción: RENTING solo si el producto es iPhone.
               if (f === "RENTING" && !esIphone) return false;
               return true;
             }).map((f) => (

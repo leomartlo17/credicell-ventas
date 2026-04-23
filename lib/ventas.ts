@@ -76,27 +76,18 @@ const TIPO_POR_FINANCIERA: Record<string, TipoSchema> = {
 };
 
 /**
- * Financieras que SIEMPRE exigen cuota inicial. SOLO estas pueden ser
- * financiera PRINCIPAL (regla de negocio San Esteban). Cualquier otra
- * financiera (BOGOTA, ADDI, SU+PAY, ALCANOS) únicamente puede usarse
- * como SECUNDARIA para cubrir la cuota inicial. RENTING es un caso
- * aparte — solo iPhone, válida como principal en ese caso.
+ * KREDIYA, +KUPO y ADELANTOS son las 3 financieras que exigen cuota inicial.
+ * Pueden ser financiera principal de cualquier venta, pero NO pueden usarse
+ * como co-financieras (secundarias) de otra. Todas las demás financieras
+ * (BOGOTA, ADDI, SU+PAY, ALCANOS, RENTING) sí pueden ser tanto principal
+ * como secundaria.
  */
 export const FINANCIERAS_CUOTA_INICIAL = ["KREDIYA", "+KUPO", "ADELANTOS"] as const;
 
-export const FINANCIERAS_VALIDAS_PRINCIPAL = [
-  "KREDIYA",
-  "+KUPO",
-  "ADELANTOS",
-  "RENTING",   // solo iPhone (el filtro de UI aplica)
-  "Contado",   // venta de contado sin financiación
-] as const;
-
-export function esFinancieraValidaPrincipal(f: string): boolean {
-  const n = normalizarFinanciera(f);
-  return (FINANCIERAS_VALIDAS_PRINCIPAL as readonly string[]).includes(n) || n === "CONTADO";
-}
-
+/**
+ * Valida si una financiera puede usarse como CO-FINANCIERA (secundaria) de
+ * otra. Regla: ninguna de las 3 de cuota inicial puede ser secundaria.
+ */
 export function puedeCombinarseConCoFinanciera(
   principal: string,
   secundaria: string
@@ -105,12 +96,11 @@ export function puedeCombinarseConCoFinanciera(
   const s = normalizarFinanciera(secundaria);
   if (!p || !s) return { ok: false, razon: "Faltan financieras" };
   if (p === s) return { ok: false, razon: "La secundaria no puede ser igual a la principal" };
-  const esP3 = (FINANCIERAS_CUOTA_INICIAL as readonly string[]).includes(p);
   const esS3 = (FINANCIERAS_CUOTA_INICIAL as readonly string[]).includes(s);
-  if (esP3 && esS3) {
+  if (esS3) {
     return {
       ok: false,
-      razon: `${p} y ${s} no pueden combinarse entre sí (ambas piden cuota inicial). Las secundarias válidas son: BOGOTA, ADDI, SU+PAY, ALCANOS.`,
+      razon: `${s} no puede ir como co-financiera (solo puede ser la financiera principal). Las co-financieras válidas son: BOGOTA, ADDI, SU+PAY, ALCANOS.`,
     };
   }
   return { ok: true };
