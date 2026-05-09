@@ -51,8 +51,9 @@ const schema = z.object({
   pagoComisionAlcanos: z.string().optional(),
   comisionAlcanos: z.number().optional(),
   precioAlcanos: z.number().optional(),
-  // Monto asignado a la financiera principal (si hay co-financiación).
-  // Si no viene, se asume que la principal cubre el valorTotal completo.
+  // Cupo aprobado por la financiera PRINCIPAL. Default = valorTotal si no viene.
+  cupoPrincipal: z.number().nonnegative().optional(),
+  /** @deprecated — usar cupoPrincipal */
   valorFinancieraPrincipal: z.number().nonnegative().optional(),
   // Co-financiaciones: N financieras secundarias que cubren partes de la
   // cuota inicial de la principal. La suma de los `valor` debe cuadrar con
@@ -207,8 +208,10 @@ export async function POST(req: Request) {
       pagoComisionAlcanos: d.pagoComisionAlcanos,
       comisionAlcanos: d.comisionAlcanos,
       precioAlcanos: d.precioAlcanos,
+      cupoPrincipal: d.cupoPrincipal,
       valorFinancieraPrincipal: d.valorFinancieraPrincipal,
       coFinanciacion: d.coFinanciacion,
+      coFinanciaciones: d.coFinanciaciones,
       asesor,
     });
 

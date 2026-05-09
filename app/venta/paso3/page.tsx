@@ -85,7 +85,8 @@ function Paso3Pago() {
 
   const [form, setForm] = useState({
     financiera: "",
-    valorTotal: "",
+    valorTotal: "",             // valor del producto (fijo, lo da el admin)
+    cupoPrincipal: "",          // cupo aprobado por la financiera principal (default = valorTotal)
     porcentajeCuota: "",
     porcentajeKupo: "20",
     cuotaKupo: "",
@@ -260,14 +261,19 @@ function Paso3Pago() {
   }
 
   // Cálculos derivados
-  const valorTotalNum = Number(form.valorTotal) || 0;
+  const valorTotalNum = Number(form.valorTotal) || 0;     // valor del producto
+  // Cupo aprobado por la principal. Si el asesor no lo edita, = valor producto.
+  const cupoPrincipalNum = Number(form.cupoPrincipal) > 0
+    ? Number(form.cupoPrincipal)
+    : valorTotalNum;
   const pagadoNum = useMemo(() => {
     return seleccionados.reduce((sum, s) => sum + (Number(s.valor) || 0), 0);
   }, [seleccionados]);
   const restante = valorTotalNum - pagadoNum;
   const esContado = form.financiera.toUpperCase() === "CONTADO";
   const pctNum = Number(form.porcentajeCuota) || 0;
-  const valorPctOficial = pctNum > 0 ? Math.round((valorTotalNum * pctNum) / 100) : 0;
+  // La cuota inicial se calcula sobre el CUPO aprobado (no sobre valor producto).
+  const valorPctOficial = pctNum > 0 ? Math.round((cupoPrincipalNum * pctNum) / 100) : 0;
   const valorRecibirNum = Number(form.valorRecibir) || 0;
   const descuentoFinanciera = valorPctOficial > 0 ? valorPctOficial - valorRecibirNum : 0;
   const diferenciaMedios = valorRecibirNum - pagadoNum;
@@ -357,13 +363,17 @@ function Paso3Pago() {
       return true;
     });
 
-  // Cuota inicial de la principal (monto a cubrir por las co-financiaciones + efectivo)
+  // Cuota inicial de la principal (solo KREDIYA/+KUPO/ADELANTOS la tienen).
+  // Se calcula sobre el CUPO aprobado, no sobre el valor del producto.
   let cuotaInicialPrincipal = 0;
   if (form.financiera === "KREDIYA" || form.financiera === "ADELANTOS") {
-    cuotaInicialPrincipal = valorPctOficial;
+    cuotaInicialPrincipal = valorPctOficial;  // ya usa cupoPrincipalNum
   } else if (form.financiera === "+KUPO") {
     cuotaInicialPrincipal = inicialKupo;
   }
+  // Faltante del valor del producto después de descontar el cupo aprobado por
+  // la principal. Se cubre con co-financieras + medios.
+  const faltanteProducto = Math.max(0, valorTotalNum - cupoPrincipalNum);
 
   // Tasas por co-financiera. BOGOTA = 0% (no cobra comisión, solo registra cupo).
   const COF_TASAS: Record<string, number> = { ADDI: 0.04165, "SU+PAY": 0.019, ALCANOS: 0.05, BOGOTA: 0 };
@@ -382,7 +392,13 @@ function Paso3Pago() {
   });
 
   const sumaCofs = cofsCalculados.reduce((s, c) => s + c.monto, 0);
-  const faltanteParaCuota = Math.max(0, cuotaInicialPrincipal - sumaCofs);
+  // Lo que el cliente debe cubrir con medios de pago en tienda:
+  //   - Si principal tiene cuota inicial: cuota inicial - cofs
+  //   - Si principal sin cuota inicial: faltanteProducto - cofs (lo que no cubrió la principal)
+  const montoACubrirConMedios = principalEsCuotaInicial
+    ? Math.max(0, cuotaInicialPrincipal - sumaCofs)
+    : Math.max(0, faltanteProducto - sumaCofs);
+  const faltanteParaCuota = montoACubrirConMedios;  // alias para compat
   // Validaciones del array de co-financiaciones
   let cofError = "";
   for (let i = 0; i < cofsCalculados.length; i++) {
@@ -528,6 +544,7 @@ function Paso3Pago() {
           filaInventario: filaInv,
           financiera: form.financiera,
           valorTotal: valorTotalNum,
+          cupoPrincipal: cupoPrincipalNum !== valorTotalNum ? cupoPrincipalNum : undefined,
           porcentajeCuota: form.porcentajeCuota ? Number(form.porcentajeCuota) : undefined,
           porcentajeKupo: esKupoIphone ? pctKupoNum : undefined,
           inicialKupo: esKupoIphone ? inicialKupo : undefined,
@@ -700,13 +717,46 @@ function Paso3Pago() {
           </select>
         </div>
 
-        {/* Valor total */}
+        {/* Valor del producto — lo pone el administrador / asesor */}
         <Numero
-          label="Valor total de la venta *"
+          label="Valor total del producto *"
           value={form.valorTotal}
           onChange={(v) => actualizar("valorTotal", v)}
           placeholder="1.500.000"
         />
+
+        {/* Cupo aprobado por la financiera principal.
+            Solo aparece si no es Contado y hay valor total.
+            Default = valor total (se edita solo si la financiera aprobó menos). */}
+        {!esContado && form.financiera && valorTotalNum > 0 && (
+          <div className="bg-[#0b0d12] border border-[#2a2f3b] rounded-lg p-3">
+            <Numero
+              label={`Cupo aprobado por ${form.financiera} (si aprobaron todo, déjalo igual al valor del producto)`}
+              value={form.cupoPrincipal}
+              onChange={(v) => actualizar("cupoPrincipal", v)}
+              placeholder={valorTotalNum.toLocaleString("es-CO")}
+            />
+            {cupoPrincipalNum < valorTotalNum && (
+              <div className="mt-2 text-xs bg-[#141821] rounded p-2 font-mono">
+                <div className="flex justify-between">
+                  <span className="text-muted">Producto:</span>
+                  <span className="text-white">${valorTotalNum.toLocaleString("es-CO")}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">{form.financiera} aprueba:</span>
+                  <span className="text-white">${cupoPrincipalNum.toLocaleString("es-CO")}</span>
+                </div>
+                <div className="flex justify-between border-t border-[#2a2f3b] mt-1 pt-1">
+                  <span className="text-yellow-300">Falta por cubrir:</span>
+                  <span className="text-yellow-300">${(valorTotalNum - cupoPrincipalNum).toLocaleString("es-CO")}</span>
+                </div>
+                <p className="text-muted mt-2 text-[11px]">
+                  Agrega co-financieras y/o medios de pago abajo hasta completar los ${valorTotalNum.toLocaleString("es-CO")}.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* +KUPO con iPhone: flujo especial de porcentaje */}
         {esKupoIphone && (
@@ -1427,19 +1477,28 @@ function Paso3Pago() {
           />
         </div>
 
-        {/* Co-financiaciones: array dinámico. Solo si la principal es de cuota inicial
-            (KREDIYA/+KUPO/ADELANTOS) y hay monto de cuota inicial calculado. */}
-        {principalEsCuotaInicial && cuotaInicialPrincipal > 0 && (
+        {/* Co-financieras: aparecen cuando hay algo que cubrir más allá de la
+            principal. Dos escenarios:
+            a) Principal de cuota inicial (KREDIYA/+KUPO/ADELANTOS) — co-financieras
+               y medios cubren la cuota inicial.
+            b) Cupo principal < valor producto — co-financieras y medios cubren
+               el faltante del producto. */}
+        {!esContado && form.financiera && (principalEsCuotaInicial ? cuotaInicialPrincipal > 0 : faltanteProducto > 0) && (
           <div className="border-t border-[#2a2f3b] pt-4 mt-2">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold text-white">Co-financiaciones (cubren la cuota inicial)</h3>
+              <h3 className="text-sm font-semibold text-white">
+                {principalEsCuotaInicial ? "Co-financieras (cubren la cuota inicial)" : "Co-financieras (cubren el faltante)"}
+              </h3>
               <span className="text-xs text-muted">
-                Cuota inicial de {form.financiera}: <span className="text-brand">${cuotaInicialPrincipal.toLocaleString("es-CO")}</span>
+                {principalEsCuotaInicial
+                  ? <>Cuota inicial de {form.financiera}: <span className="text-brand">${cuotaInicialPrincipal.toLocaleString("es-CO")}</span></>
+                  : <>Falta: <span className="text-brand">${faltanteProducto.toLocaleString("es-CO")}</span></>}
               </span>
             </div>
             <p className="text-xs text-muted mb-3">
-              Si el cliente NO tiene efectivo para cubrir toda la cuota inicial, puede usar 1, 2 o más financieras.
-              Lo que falte lo pondrá en medios de pago (Efectivo/Transferencia/etc).
+              {principalEsCuotaInicial
+                ? "Si el cliente no tiene efectivo para toda la cuota inicial, puede usar 1, 2 o más co-financieras (BOGOTA, ADDI, SU+PAY, ALCANOS). Lo que falte va a medios de pago."
+                : `Suma los cupos de otras financieras para cubrir los $${faltanteProducto.toLocaleString("es-CO")} que falta. Lo que no cubran esas, va a medios de pago.`}
             </p>
 
             {coFinanciaciones.map((cof, idx) => {
@@ -1475,7 +1534,7 @@ function Paso3Pago() {
                     </div>
 
                     <Numero
-                      label={`Cupo aprobado por ${cof.financiera || "esta financiera"} (de $${cuotaInicialPrincipal.toLocaleString("es-CO")} de cuota inicial)`}
+                      label={`Cupo aprobado por ${cof.financiera || "esta financiera"}`}
                       value={cof.monto}
                       onChange={(v) => updateCof(idx, "monto", v)}
                       placeholder="Ej: 200000"
@@ -1527,17 +1586,21 @@ function Paso3Pago() {
             {coFinanciaciones.length > 0 && (
               <div className="text-xs bg-[#0b0d12] rounded-lg p-3 border border-[#2a2f3b] font-mono mb-2">
                 <div className="flex justify-between">
-                  <span className="text-muted">Suma co-financiaciones:</span>
+                  <span className="text-muted">Suma co-financieras:</span>
                   <span className="text-white">${sumaCofs.toLocaleString("es-CO")}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted">Cuota inicial {form.financiera}:</span>
-                  <span className="text-white">${cuotaInicialPrincipal.toLocaleString("es-CO")}</span>
+                  <span className="text-muted">
+                    {principalEsCuotaInicial ? `Cuota inicial ${form.financiera}:` : "Falta del producto:"}
+                  </span>
+                  <span className="text-white">
+                    ${(principalEsCuotaInicial ? cuotaInicialPrincipal : faltanteProducto).toLocaleString("es-CO")}
+                  </span>
                 </div>
                 <div className="flex justify-between border-t border-[#2a2f3b] mt-1 pt-1">
-                  <span className="text-muted">{faltanteParaCuota > 0 ? "Falta en medios de pago:" : "Cuota cubierta ✓"}</span>
-                  <span className={faltanteParaCuota > 0 ? "text-yellow-300" : "text-green-400"}>
-                    ${faltanteParaCuota.toLocaleString("es-CO")}
+                  <span className="text-muted">{montoACubrirConMedios > 0 ? "Falta en medios de pago:" : "Cubierto ✓"}</span>
+                  <span className={montoACubrirConMedios > 0 ? "text-yellow-300" : "text-green-400"}>
+                    ${montoACubrirConMedios.toLocaleString("es-CO")}
                   </span>
                 </div>
               </div>
